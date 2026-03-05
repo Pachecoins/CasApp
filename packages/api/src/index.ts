@@ -17,6 +17,9 @@ import requestsRoutes, { clientRequestsRouter } from './routes/requests.routes.j
 import reviewsRoutes from './routes/reviews.routes.js'
 import chatRoutes from './routes/chat.routes.js'
 import paymentsRoutes from './routes/payments.routes.js'
+import subscriptionsRoutes from './routes/subscriptions.routes.js'
+import { generateScheduledRequests } from './services/subscriptions.service.js'
+import cron from 'node-cron'
 
 const app = express()
 const httpServer = createServer(app)
@@ -106,6 +109,7 @@ app.use('/api/clients', clientRequestsRouter)
 app.use('/api/reviews', reviewsRoutes)
 app.use('/api/chat', chatRoutes)
 app.use('/api/payments', paymentsRoutes)
+app.use('/api/subscriptions', subscriptionsRoutes)
 
 app.use((_req, res) => res.status(404).json({ success: false, error: 'Route not found' }))
 app.use(errorHandler)
@@ -118,6 +122,14 @@ httpServer.listen(env.PORT, () => {
    → Environment: ${env.NODE_ENV}
    → Health: http://localhost:${env.PORT}/health
   `)
+
+  // ─── Cron: check subscriptions every 30 minutes ──────────────────────────
+  cron.schedule('*/30 * * * *', () => {
+    generateScheduledRequests().catch((err) =>
+      console.error('[Cron] Subscription job failed:', err),
+    )
+  })
+  console.log('[Cron] Subscription scheduler started (every 30 min)')
 })
 
 export default app

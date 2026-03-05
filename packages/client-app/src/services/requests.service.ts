@@ -63,6 +63,46 @@ export const categoriesService = {
   },
 }
 
+export const subscriptionsService = {
+  create: async (payload: {
+    categoryId: string
+    frequency: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY'
+    dayOfWeek: number
+    timeSlot: string
+    address: string
+    latitude: number
+    longitude: number
+    preferSameWorker?: boolean
+    description?: string
+  }) => {
+    const { data } = await api.post('/subscriptions', payload)
+    return data.data
+  },
+
+  getMySubscriptions: async () => {
+    const { data } = await api.get('/subscriptions/me')
+    return data.data
+  },
+
+  getById: async (id: string) => {
+    const { data } = await api.get(`/subscriptions/${id}`)
+    return data.data
+  },
+
+  update: async (
+    id: string,
+    payload: { dayOfWeek?: number; timeSlot?: string; preferSameWorker?: boolean },
+  ) => {
+    const { data } = await api.patch(`/subscriptions/${id}`, payload)
+    return data.data
+  },
+
+  cancel: async (id: string) => {
+    const { data } = await api.delete(`/subscriptions/${id}`)
+    return data.data
+  },
+}
+
 export const paymentsService = {
   createPreference: async (requestId: string) => {
     const { data } = await api.post('/payments/create-preference', { requestId })
