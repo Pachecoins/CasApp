@@ -3,6 +3,10 @@ import { SplashPage } from './pages/auth/SplashPage'
 import { LoginPage } from './pages/auth/LoginPage'
 import { RegisterPage } from './pages/auth/RegisterPage'
 import { HomePage } from './pages/home/HomePage'
+import { CategoryModalityPage } from './pages/services/CategoryModalityPage'
+import { ConfigureRequestPage } from './pages/services/ConfigureRequestPage'
+import { SearchingPage } from './pages/requests/SearchingPage'
+import { RequestConfirmedPage } from './pages/requests/RequestConfirmedPage'
 import { useAuthStore } from './store/auth.store'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -24,32 +28,31 @@ export default function App() {
         {/* Splash */}
         <Route path="/" element={<SplashPage />} />
 
-        {/* Auth routes (public only) */}
+        {/* Public only */}
+        <Route path="/login" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
+        <Route path="/register" element={<PublicOnlyRoute><RegisterPage /></PublicOnlyRoute>} />
+
+        {/* Protected */}
+        <Route path="/home" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+
+        {/* Service flow */}
         <Route
-          path="/login"
-          element={
-            <PublicOnlyRoute>
-              <LoginPage />
-            </PublicOnlyRoute>
-          }
+          path="/services/:slug"
+          element={<ProtectedRoute><CategoryModalityPage /></ProtectedRoute>}
         />
         <Route
-          path="/register"
-          element={
-            <PublicOnlyRoute>
-              <RegisterPage />
-            </PublicOnlyRoute>
-          }
+          path="/services/:slug/configure"
+          element={<ProtectedRoute><ConfigureRequestPage /></ProtectedRoute>}
         />
 
-        {/* Protected routes */}
+        {/* Request flow */}
         <Route
-          path="/home"
-          element={
-            <ProtectedRoute>
-              <HomePage />
-            </ProtectedRoute>
-          }
+          path="/requests/:requestId/searching"
+          element={<ProtectedRoute><SearchingPage /></ProtectedRoute>}
+        />
+        <Route
+          path="/requests/:requestId/confirmed"
+          element={<ProtectedRoute><RequestConfirmedPage /></ProtectedRoute>}
         />
 
         {/* Catch-all */}

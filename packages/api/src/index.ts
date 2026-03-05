@@ -11,6 +11,8 @@ import { env } from './config/env.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import authRoutes from './routes/auth.routes.js'
 import categoriesRoutes from './routes/categories.routes.js'
+import workersRoutes from './routes/workers.routes.js'
+import requestsRoutes, { clientRequestsRouter } from './routes/requests.routes.js'
 
 const app = express()
 const httpServer = createServer(app)
@@ -26,16 +28,32 @@ export const io = new SocketIOServer(httpServer, {
 io.on('connection', (socket) => {
   console.log(`[Socket.IO] Client connected: ${socket.id}`)
 
-  socket.on('worker:location-update', (data) => {
-    socket.broadcast.emit('worker:location-update', data)
+  // Unirse a sala personal (cliente o trabajador)
+  socket.on('identify', (data: { userId: string; role: string }) => {
+    if (data.role === 'WORKER') socket.join(`worker:${data.userId}`)
+    if (data.role === 'CLIENT') socket.join(`client:${data.userId}`)
+    console.log(`[Socket.IO] ${data.role} ${data.userId} identified`)
   })
 
+  // Trabajador actualiza su GPS
+  socket.on('worker:location-update', (data: { workerId: string; lat: number; lng: number; requestId?: string }) => {
+    if (data.requestId) {
+      io.to(`request:${data.requestId}`).emit('worker:location-update', data)
+    }
+  })
+
+  // Unirse a sala de pedido
   socket.on('join-request-room', (requestId: string) => {
     socket.join(`request:${requestId}`)
   })
 
-  socket.on('chat:message', (data) => {
-    io.to(`request:${data.requestId}`).emit('chat:message', data)
+  // Chat entre cliente y trabajador
+  socket.on('chat:message', (data: { requestId: string; senderId: string; senderName: string; message: string }) => {
+    io.to(`request:${data.requestId}`).emit('chat:message', {
+      ...data,
+      id: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+    })
   })
 
   socket.on('disconnect', () => {
@@ -78,6 +96,9 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/auth', authRoutes)
 app.use('/api/categories', categoriesRoutes)
+app.use('/api/workers', workersRoutes)
+app.use('/api/requests', requestsRoutes)
+app.use('/api/clients', clientRequestsRouter)
 
 // 404 handler
 app.use((_req, res) => {

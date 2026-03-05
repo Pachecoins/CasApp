@@ -1,13 +1,59 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BarChart2, Calendar, Star, Power, MapPin, Bell } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { Button } from '@/components/ui/Button'
+import { workerRequestsService } from '@/services/requests.service'
+import { io, type Socket } from 'socket.io-client'
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 export function DashboardPage() {
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
   const [isAvailable, setIsAvailable] = useState(false)
+  const [updatingAvailability, setUpdatingAvailability] = useState(false)
+  const socketRef = useRef<Socket | null>(null)
+
+  // Connect to socket and listen for incoming requests
+  useEffect(() => {
+    if (!user) return
+
+    const socket = io(API_URL)
+    socketRef.current = socket
+
+    socket.emit('identify', { userId: user.id, role: 'WORKER' })
+
+    // Listen for incoming request notifications
+    socket.on('worker:incoming-request', (data: { request: { id: string }; expiresAt: string } & { request: { category: { name: string }; client: { user: { firstName: string; lastName: string } }; distanceKm?: number; estimatedArrivalMin?: number; finalPrice?: number; description?: string; address: string; latitude: number; longitude: number } & { type: string } }) => {
+      // Navigate to the incoming request screen
+      navigate('/requests/incoming', { state: data })
+    })
+
+    return () => { socket.disconnect() }
+  }, [user, navigate])
+
+  const handleToggleAvailability = async () => {
+    setUpdatingAvailability(true)
+    try {
+      await workerRequestsService.updateAvailability(!isAvailable)
+      setIsAvailable(!isAvailable)
+
+      // Start GPS tracking when available
+      if (!isAvailable && 'geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          workerRequestsService
+            .updateLocation(pos.coords.latitude, pos.coords.longitude)
+            .catch(() => {})
+        })
+      }
+    } catch {
+      // fallback to local toggle if API fails
+      setIsAvailable(!isAvailable)
+    } finally {
+      setUpdatingAvailability(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -45,16 +91,15 @@ export function DashboardPage() {
               </p>
             </div>
             <button
-              onClick={() => setIsAvailable(!isAvailable)}
-              className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
+              onClick={handleToggleAvailability}
+              disabled={updatingAvailability}
+              className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors disabled:opacity-60 ${
                 isAvailable ? 'bg-white' : 'bg-white/30'
               }`}
             >
               <span
                 className={`inline-block h-6 w-6 rounded-full transition-transform ${
-                  isAvailable
-                    ? 'translate-x-7 bg-primary'
-                    : 'translate-x-1 bg-white'
+                  isAvailable ? 'translate-x-7 bg-primary' : 'translate-x-1 bg-white'
                 }`}
               />
             </button>
@@ -103,7 +148,8 @@ export function DashboardPage() {
               <Button
                 className="mt-4"
                 size="sm"
-                onClick={() => setIsAvailable(true)}
+                loading={updatingAvailability}
+                onClick={handleToggleAvailability}
               >
                 <Power size={16} className="mr-2" />
                 Activar disponibilidad

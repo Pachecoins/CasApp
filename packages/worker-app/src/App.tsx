@@ -3,6 +3,8 @@ import { SplashPage } from './pages/auth/SplashPage'
 import { LoginPage } from './pages/auth/LoginPage'
 import { RegisterPage } from './pages/auth/RegisterPage'
 import { DashboardPage } from './pages/dashboard/DashboardPage'
+import { IncomingRequestPage } from './pages/requests/IncomingRequestPage'
+import { JobDetailPage } from './pages/requests/JobDetailPage'
 import { useAuthStore } from './store/auth.store'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -27,6 +29,18 @@ export default function App() {
         <Route path="/register" element={<PublicOnlyRoute><RegisterPage /></PublicOnlyRoute>} />
 
         <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+
+        {/* Incoming request (from socket notification) */}
+        <Route
+          path="/requests/incoming"
+          element={<ProtectedRoute><IncomingRequestPage /></ProtectedRoute>}
+        />
+
+        {/* Job detail + status management */}
+        <Route
+          path="/requests/:requestId"
+          element={<ProtectedRoute><JobDetailPage /></ProtectedRoute>}
+        />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
