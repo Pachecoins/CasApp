@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Leaflet */
+@import 'leaflet/dist/leaflet.css';
+
 @layer base {
   body {
     @apply bg-background text-gray-900 font-body antialiased;

@@ -78,8 +78,9 @@ model User {
   clientProfile  ClientProfile?
   workerProfile  WorkerProfile?
   notifications  Notification[]
-  reviewsGiven   Review[]       @relation("ReviewerRelation")
-  reviewsReceived Review[]      @relation("RevieweeRelation")
+  reviewsGiven    Review[]       @relation("ReviewerRelation")
+  reviewsReceived Review[]       @relation("RevieweeRelation")
+  chatMessages    ChatMessage[]
 
   @@index([email])
   @@map("users")
@@ -179,8 +180,9 @@ model ServiceRequest {
   client       ClientProfile   @relation(fields: [clientId], references: [id])
   worker       WorkerProfile?  @relation(fields: [workerId], references: [id])
   category     ServiceCategory @relation(fields: [categoryId], references: [id])
-  review       Review?
-  transactions Transaction[]
+  review        Review?
+  transactions  Transaction[]
+  chatMessages  ChatMessage[]
 
   @@index([clientId, status])
   @@index([workerId, status])
@@ -259,4 +261,19 @@ model Transaction {
 
   @@index([serviceRequestId])
   @@map("transactions")
+}
+
+model ChatMessage {
+  id               String   @id @default(cuid())
+  serviceRequestId String
+  senderId         String
+  senderName       String
+  message          String
+  createdAt        DateTime @default(now())
+
+  serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id], onDelete: Cascade)
+  sender         User           @relation(fields: [senderId], references: [id])
+
+  @@index([serviceRequestId, createdAt])
+  @@map("chat_messages")
 }

@@ -9,15 +9,18 @@ import rateLimit from 'express-rate-limit'
 
 import { env } from './config/env.js'
 import { errorHandler } from './middleware/errorHandler.js'
+import { prisma } from './config/prisma.js'
 import authRoutes from './routes/auth.routes.js'
 import categoriesRoutes from './routes/categories.routes.js'
 import workersRoutes from './routes/workers.routes.js'
 import requestsRoutes, { clientRequestsRouter } from './routes/requests.routes.js'
+import reviewsRoutes from './routes/reviews.routes.js'
+import chatRoutes from './routes/chat.routes.js'
 
 const app = express()
 const httpServer = createServer(app)
 
-// ─── Socket.IO Setup ──────────────────────────────────────────────────────────
+// ─── Socket.IO ───────────────────────────────────────────────────────────────
 export const io = new SocketIOServer(httpServer, {
   cors: {
     origin: [env.CLIENT_APP_URL, env.WORKER_APP_URL],
@@ -28,32 +31,43 @@ export const io = new SocketIOServer(httpServer, {
 io.on('connection', (socket) => {
   console.log(`[Socket.IO] Client connected: ${socket.id}`)
 
-  // Unirse a sala personal (cliente o trabajador)
+  // Personal rooms
   socket.on('identify', (data: { userId: string; role: string }) => {
     if (data.role === 'WORKER') socket.join(`worker:${data.userId}`)
     if (data.role === 'CLIENT') socket.join(`client:${data.userId}`)
-    console.log(`[Socket.IO] ${data.role} ${data.userId} identified`)
   })
 
-  // Trabajador actualiza su GPS
+  // Join request room
+  socket.on('join-request-room', (requestId: string) => {
+    socket.join(`request:${requestId}`)
+  })
+
+  // GPS update → broadcast to request room only
   socket.on('worker:location-update', (data: { workerId: string; lat: number; lng: number; requestId?: string }) => {
     if (data.requestId) {
       io.to(`request:${data.requestId}`).emit('worker:location-update', data)
     }
   })
 
-  // Unirse a sala de pedido
-  socket.on('join-request-room', (requestId: string) => {
-    socket.join(`request:${requestId}`)
-  })
+  // Chat message → broadcast + persist to DB
+  socket.on('chat:message', async (data: { requestId: string; senderId: string; senderName: string; message: string }) => {
+    const id = crypto.randomUUID()
+    const timestamp = new Date().toISOString()
 
-  // Chat entre cliente y trabajador
-  socket.on('chat:message', (data: { requestId: string; senderId: string; senderName: string; message: string }) => {
-    io.to(`request:${data.requestId}`).emit('chat:message', {
-      ...data,
-      id: crypto.randomUUID(),
-      timestamp: new Date().toISOString(),
-    })
+    const fullMsg = { ...data, id, timestamp }
+    io.to(`request:${data.requestId}`).emit('chat:message', fullMsg)
+
+    // Persist asynchronously — don't block the emit
+    prisma.chatMessage.create({
+      data: {
+        id,
+        serviceRequestId: data.requestId,
+        senderId: data.senderId,
+        senderName: data.senderName,
+        message: data.message,
+        createdAt: new Date(timestamp),
+      },
+    }).catch((err) => console.error('[Chat] Failed to persist message:', err))
   })
 
   socket.on('disconnect', () => {
@@ -63,33 +77,22 @@ io.on('connection', (socket) => {
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(helmet())
-app.use(
-  cors({
-    origin: [env.CLIENT_APP_URL, env.WORKER_APP_URL],
-    credentials: true,
-  }),
-)
+app.use(cors({ origin: [env.CLIENT_APP_URL, env.WORKER_APP_URL], credentials: true }))
 app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'))
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true }))
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
-})
+const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true, legacyHeaders: false })
 app.use('/api', limiter)
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
-  message: { success: false, error: 'Too many auth attempts, please try again later' },
+  message: { success: false, error: 'Too many auth attempts' },
 })
 app.use('/api/auth', authLimiter)
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
+// ─── Routes ──────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
@@ -99,16 +102,13 @@ app.use('/api/categories', categoriesRoutes)
 app.use('/api/workers', workersRoutes)
 app.use('/api/requests', requestsRoutes)
 app.use('/api/clients', clientRequestsRouter)
+app.use('/api/reviews', reviewsRoutes)
+app.use('/api/chat', chatRoutes)
 
-// 404 handler
-app.use((_req, res) => {
-  res.status(404).json({ success: false, error: 'Route not found' })
-})
-
-// Error handler (must be last)
+app.use((_req, res) => res.status(404).json({ success: false, error: 'Route not found' }))
 app.use(errorHandler)
 
-// ─── Start Server ─────────────────────────────────────────────────────────────
+// ─── Start ────────────────────────────────────────────────────────────────────
 httpServer.listen(env.PORT, () => {
   console.log(`
 🏠 CasApp API running!
