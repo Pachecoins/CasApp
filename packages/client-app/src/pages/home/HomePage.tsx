@@ -148,11 +148,11 @@ export function HomePage() {
             <span className="text-xs">Suscripciones</span>
           </button>
           <button
-            onClick={() => navigate('/history')}
+            onClick={() => navigate('/payment/history')}
             className="flex flex-col items-center gap-1 text-gray-400"
           >
             <Clock size={20} />
-            <span className="text-xs">Historial</span>
+            <span className="text-xs">Pagos</span>
           </button>
           <button
             onClick={() => navigate('/profile')}

@@ -16,6 +16,7 @@ import workersRoutes from './routes/workers.routes.js'
 import requestsRoutes, { clientRequestsRouter } from './routes/requests.routes.js'
 import reviewsRoutes from './routes/reviews.routes.js'
 import chatRoutes from './routes/chat.routes.js'
+import paymentsRoutes from './routes/payments.routes.js'
 
 const app = express()
 const httpServer = createServer(app)
@@ -104,6 +105,7 @@ app.use('/api/requests', requestsRoutes)
 app.use('/api/clients', clientRequestsRouter)
 app.use('/api/reviews', reviewsRoutes)
 app.use('/api/chat', chatRoutes)
+app.use('/api/payments', paymentsRoutes)
 
 app.use((_req, res) => res.status(404).json({ success: false, error: 'Route not found' }))
 app.use(errorHandler)

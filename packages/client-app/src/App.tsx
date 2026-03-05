@@ -9,6 +9,9 @@ import { SearchingPage } from './pages/requests/SearchingPage'
 import { TrackingPage } from './pages/requests/TrackingPage'
 import { RequestConfirmedPage } from './pages/requests/RequestConfirmedPage'
 import { ReviewPage } from './pages/requests/ReviewPage'
+import { CheckoutPage } from './pages/payment/CheckoutPage'
+import { PaymentResultPage } from './pages/payment/PaymentResultPage'
+import { PaymentHistoryPage } from './pages/payment/PaymentHistoryPage'
 import { useAuthStore } from './store/auth.store'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -37,6 +40,11 @@ export default function App() {
         {/* Service flow */}
         <Route path="/services/:slug" element={<ProtectedRoute><CategoryModalityPage /></ProtectedRoute>} />
         <Route path="/services/:slug/configure" element={<ProtectedRoute><ConfigureRequestPage /></ProtectedRoute>} />
+
+        {/* Payment flow */}
+        <Route path="/requests/:requestId/checkout" element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
+        <Route path="/payment/result" element={<ProtectedRoute><PaymentResultPage /></ProtectedRoute>} />
+        <Route path="/payment/history" element={<ProtectedRoute><PaymentHistoryPage /></ProtectedRoute>} />
 
         {/* Request flow */}
         <Route path="/requests/:requestId/searching" element={<ProtectedRoute><SearchingPage /></ProtectedRoute>} />

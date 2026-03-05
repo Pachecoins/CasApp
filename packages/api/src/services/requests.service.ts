@@ -44,6 +44,8 @@ export async function createRequest(params: CreateRequestParams) {
       clientId: clientProfile.id,
       categoryId: params.categoryId,
       type: params.type,
+      // ON_DEMAND and SCHEDULED go to PENDING_PAYMENT; matching starts after payment
+      status: params.type === 'SUBSCRIPTION' ? 'PENDING' : 'PENDING_PAYMENT',
       address: params.address,
       latitude: params.latitude,
       longitude: params.longitude,
@@ -60,12 +62,18 @@ export async function createRequest(params: CreateRequestParams) {
     },
   })
 
-  // Para on-demand: notificar trabajadores cercanos inmediatamente
-  if (params.type === 'ON_DEMAND') {
-    await notifyNearbyWorkers(request.id, params.latitude, params.longitude, params.categoryId)
-  }
-
   return request
+}
+
+// Exported so payments.service can trigger matching after payment approval
+export async function notifyNearbyWorkersExport(
+  requestId: string,
+  lat: number,
+  lng: number,
+  categoryId: string,
+  radiusKm = 15,
+) {
+  return notifyNearbyWorkers(requestId, lat, lng, categoryId, radiusKm)
 }
 
 async function notifyNearbyWorkers(

@@ -36,3 +36,10 @@ export const workerRequestsService = {
     return data.data
   },
 }
+
+export const earningsService = {
+  getHistory: async () => {
+    const { data } = await api.get('/payments/history')
+    return data.data
+  },
+}

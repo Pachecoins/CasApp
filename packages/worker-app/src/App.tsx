@@ -5,6 +5,7 @@ import { RegisterPage } from './pages/auth/RegisterPage'
 import { DashboardPage } from './pages/dashboard/DashboardPage'
 import { IncomingRequestPage } from './pages/requests/IncomingRequestPage'
 import { JobDetailPage } from './pages/requests/JobDetailPage'
+import { EarningsPage } from './pages/earnings/EarningsPage'
 import { useAuthStore } from './store/auth.store'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -29,6 +30,7 @@ export default function App() {
         <Route path="/register" element={<PublicOnlyRoute><RegisterPage /></PublicOnlyRoute>} />
 
         <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+        <Route path="/earnings" element={<ProtectedRoute><EarningsPage /></ProtectedRoute>} />
 
         {/* Incoming request (from socket notification) */}
         <Route

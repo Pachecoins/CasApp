@@ -21,6 +21,7 @@ export const env = {
 
   CLIENT_APP_URL: process.env.CLIENT_APP_URL || 'http://localhost:5173',
   WORKER_APP_URL: process.env.WORKER_APP_URL || 'http://localhost:5174',
+  API_URL: process.env.API_URL || 'http://localhost:3000',
 
   PLATFORM_COMMISSION: parseFloat(process.env.PLATFORM_COMMISSION || '0.20'),
 

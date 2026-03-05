@@ -62,3 +62,31 @@ export const categoriesService = {
     return data.data
   },
 }
+
+export const paymentsService = {
+  createPreference: async (requestId: string) => {
+    const { data } = await api.post('/payments/create-preference', { requestId })
+    return data.data as {
+      transactionId: string
+      initPoint: string
+      sandboxInitPoint?: string
+      preferenceId: string
+      isMock: boolean
+    }
+  },
+
+  mockApprove: async (requestId: string) => {
+    const { data } = await api.post('/payments/mock-approve', { requestId })
+    return data.data
+  },
+
+  getHistory: async () => {
+    const { data } = await api.get('/payments/history')
+    return data.data
+  },
+
+  getTransaction: async (id: string) => {
+    const { data } = await api.get(`/payments/${id}`)
+    return data.data
+  },
+}

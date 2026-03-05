@@ -25,6 +25,7 @@ enum ServiceType {
 }
 
 enum ServiceStatus {
+  PENDING_PAYMENT
   PENDING
   MATCHED
   CONFIRMED
@@ -254,12 +255,17 @@ model Transaction {
   currency         String            @default("ARS")
   method           TransactionMethod
   mpPaymentId      String?
+  mpPreferenceId   String?
+  workerEarnings   Float?
   status           TransactionStatus @default(PENDING)
+  rawWebhookData   Json?
   createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id])
 
   @@index([serviceRequestId])
+  @@index([mpPaymentId])
   @@map("transactions")
 }
 

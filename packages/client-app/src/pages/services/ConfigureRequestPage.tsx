@@ -140,11 +140,8 @@ export function ConfigureRequestPage() {
           scheduledAt: (data as ScheduledForm).scheduledAt,
         })
 
-        if (type === 'ON_DEMAND') {
-          navigate(`/requests/${request.id}/searching`)
-        } else {
-          navigate(`/requests/${request.id}/confirmed`)
-        }
+        // Go to checkout first — worker matching starts after payment confirmation
+        navigate(`/requests/${request.id}/checkout`)
       } else {
         // Subscription — navegamos a la página de confirmación con los datos
         navigate('/subscriptions/new/confirm', {
