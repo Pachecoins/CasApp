@@ -1,0 +1,262 @@
+// CasApp - Prisma Schema
+// Plataforma de servicios del hogar on-demand
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ───────────────────────────────────────────────────────────────────
+
+enum Role {
+  CLIENT
+  WORKER
+  ADMIN
+}
+
+enum ServiceType {
+  ON_DEMAND
+  SCHEDULED
+  SUBSCRIPTION
+}
+
+enum ServiceStatus {
+  PENDING
+  MATCHED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+  FAILED
+}
+
+enum SubscriptionFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
+enum TransactionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REFUNDED
+}
+
+enum TransactionMethod {
+  MERCADOPAGO
+  CREDIT_CARD
+  DEBIT_CARD
+  CASH
+}
+
+// ─── MODELS ──────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  phone        String?
+  firstName    String
+  lastName     String
+  avatarUrl    String?
+  role         Role     @default(CLIENT)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  clientProfile  ClientProfile?
+  workerProfile  WorkerProfile?
+  notifications  Notification[]
+  reviewsGiven   Review[]       @relation("ReviewerRelation")
+  reviewsReceived Review[]      @relation("RevieweeRelation")
+
+  @@index([email])
+  @@map("users")
+}
+
+model ClientProfile {
+  id                     String  @id @default(cuid())
+  userId                 String  @unique
+  address                String?
+  latitude               Float?
+  longitude              Float?
+  preferredPaymentMethod String?
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceRequests ServiceRequest[]
+  subscriptions   Subscription[]
+
+  @@map("client_profiles")
+}
+
+model WorkerProfile {
+  id                 String  @id @default(cuid())
+  userId             String  @unique
+  bio                String?
+  rating             Float   @default(0)
+  totalReviews       Int     @default(0)
+  isAvailable        Boolean @default(false)
+  currentLatitude    Float?
+  currentLongitude   Float?
+  radiusKm           Float   @default(10)
+  isVerified         Boolean @default(false)
+  identityVerified   Boolean @default(false)
+  bankAccountInfo    String? // encrypted
+
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workerServices   WorkerService[]
+  serviceRequests  ServiceRequest[]
+  subscriptions    Subscription[]
+
+  @@index([isAvailable, currentLatitude, currentLongitude])
+  @@map("worker_profiles")
+}
+
+model ServiceCategory {
+  id             String  @id @default(cuid())
+  name           String  @unique
+  slug           String  @unique
+  iconUrl        String?
+  description    String?
+  basePrice      Float
+  scheduledPrice Float
+  isActive       Boolean @default(true)
+
+  workerServices  WorkerService[]
+  serviceRequests ServiceRequest[]
+  subscriptions   Subscription[]
+
+  @@index([slug])
+  @@map("service_categories")
+}
+
+model WorkerService {
+  id              String  @id @default(cuid())
+  workerId        String
+  categoryId      String
+  yearsExperience Int     @default(0)
+  hourlyRate      Float?
+  portfolio       Json    @default("[]")
+  isActive        Boolean @default(true)
+
+  worker   WorkerProfile   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  category ServiceCategory @relation(fields: [categoryId], references: [id])
+
+  @@unique([workerId, categoryId])
+  @@map("worker_services")
+}
+
+model ServiceRequest {
+  id                String        @id @default(cuid())
+  clientId          String
+  categoryId        String
+  workerId          String?
+  type              ServiceType
+  status            ServiceStatus @default(PENDING)
+  scheduledAt       DateTime?
+  address           String
+  latitude          Float
+  longitude         Float
+  description       String?
+  estimatedDuration Int? // in minutes
+  finalPrice        Float?
+  paymentStatus     PaymentStatus @default(PENDING)
+  paymentIntentId   String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  client       ClientProfile   @relation(fields: [clientId], references: [id])
+  worker       WorkerProfile?  @relation(fields: [workerId], references: [id])
+  category     ServiceCategory @relation(fields: [categoryId], references: [id])
+  review       Review?
+  transactions Transaction[]
+
+  @@index([clientId, status])
+  @@index([workerId, status])
+  @@index([status, type])
+  @@map("service_requests")
+}
+
+model Subscription {
+  id                String                @id @default(cuid())
+  clientId          String
+  workerId          String?
+  categoryId        String
+  frequency         SubscriptionFrequency
+  preferSameWorker  Boolean               @default(false)
+  dayOfWeek         Int // 0=Sunday, 1=Monday, ..., 6=Saturday
+  timeSlot          String // "09:00", "14:00", etc.
+  isActive          Boolean               @default(true)
+  nextServiceDate   DateTime?
+  pricePerVisit     Float
+  startedAt         DateTime              @default(now())
+  cancelledAt       DateTime?
+
+  client   ClientProfile   @relation(fields: [clientId], references: [id])
+  worker   WorkerProfile?  @relation(fields: [workerId], references: [id])
+  category ServiceCategory @relation(fields: [categoryId], references: [id])
+
+  @@index([clientId, isActive])
+  @@index([workerId, isActive])
+  @@map("subscriptions")
+}
+
+model Review {
+  id               String   @id @default(cuid())
+  serviceRequestId String   @unique
+  reviewerId       String
+  revieweeId       String
+  rating           Int // 1-5
+  comment          String?
+  createdAt        DateTime @default(now())
+
+  serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id])
+  reviewer       User           @relation("ReviewerRelation", fields: [reviewerId], references: [id])
+  reviewee       User           @relation("RevieweeRelation", fields: [revieweeId], references: [id])
+
+  @@index([revieweeId])
+  @@map("reviews")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  type      String
+  isRead    Boolean  @default(false)
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model Transaction {
+  id               String            @id @default(cuid())
+  serviceRequestId String
+  amount           Float
+  currency         String            @default("ARS")
+  method           TransactionMethod
+  mpPaymentId      String?
+  status           TransactionStatus @default(PENDING)
+  createdAt        DateTime          @default(now())
+
+  serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id])
+
+  @@index([serviceRequestId])
+  @@map("transactions")
+}

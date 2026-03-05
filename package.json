@@ -1,0 +1,38 @@
+{
+  "name": "casapp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CasApp - Plataforma de servicios del hogar on-demand",
+  "scripts": {
+    "dev": "pnpm --parallel --filter './packages/*' dev",
+    "dev:api": "pnpm --filter @casapp/api dev",
+    "dev:client": "pnpm --filter @casapp/client-app dev",
+    "dev:worker": "pnpm --filter @casapp/worker-app dev",
+    "build": "pnpm --recursive build",
+    "db:generate": "prisma generate --schema=prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema=prisma/schema.prisma",
+    "db:push": "prisma db push --schema=prisma/schema.prisma",
+    "db:studio": "prisma studio --schema=prisma/schema.prisma",
+    "db:seed": "tsx prisma/seed.ts",
+    "test": "pnpm --recursive test",
+    "lint": "pnpm --recursive lint",
+    "typecheck": "pnpm --recursive typecheck"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "prisma": "^5.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.10.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.15.1"
+}
