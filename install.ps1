@@ -87,18 +87,31 @@ $pgService = Get-Service -Name "postgresql*" -ErrorAction SilentlyContinue
 
 if (-not $pgService) {
     Write-Warn "PostgreSQL no encontrado."
-    $choice = Read-Host "  Queres instalarlo automaticamente? (S/N)"
+    $choice = Read-Host "  Queres instalarlo automaticamente con winget? (S/N)"
     if ($choice -match '^[sS]') {
-        $pgUrl = "https://sbp.enterprisedb.com/get/postgresql-16.3-1-windows-x64.exe"
-        $pgInstaller = "$env:TEMP\pg-installer.exe"
-        Write-Host "  Descargando PostgreSQL 16 (~300 MB)..." -ForegroundColor Yellow
-        Invoke-WebRequest -Uri $pgUrl -OutFile $pgInstaller -UseBasicParsing
+        Write-Host "  Instalando PostgreSQL 16 via winget..." -ForegroundColor Yellow
+        $wingetOk = $false
+        try {
+            winget install --id PostgreSQL.PostgreSQL.16 --silent --accept-package-agreements --accept-source-agreements
+            $wingetOk = $true
+        } catch {
+            $wingetOk = $false
+        }
+
+        if (-not $wingetOk) {
+            Write-Warn "winget no disponible. Instala PostgreSQL manualmente:"
+            Write-Warn "  https://www.postgresql.org/download/windows/"
+            Write-Warn "Durante la instalacion usa password: casapp1234"
+            Read-Host "  Presiona Enter cuando hayas terminado de instalar PostgreSQL"
+        }
+
+        # Refrescar PATH para encontrar psql
+        $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";" +
+                    [System.Environment]::GetEnvironmentVariable("PATH","User")
+
         $pgPassword = "casapp1234"
-        Start-Process $pgInstaller -Wait -ArgumentList `
-            "--mode unattended --unattendedmodeui none --superpassword `"$pgPassword`" --serverport 5432"
-        Remove-Item $pgInstaller -Force
-        Write-OK "PostgreSQL instalado (usuario: postgres / password: $pgPassword)"
         $env:PGPASSWORD = $pgPassword
+        Write-OK "PostgreSQL listo (password postgres: $pgPassword)"
     } else {
         Write-Warn "Saltando PostgreSQL. Configuralo manualmente en el .env"
     }
