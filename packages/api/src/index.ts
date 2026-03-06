@@ -18,6 +18,7 @@ import reviewsRoutes from './routes/reviews.routes.js'
 import chatRoutes from './routes/chat.routes.js'
 import paymentsRoutes from './routes/payments.routes.js'
 import subscriptionsRoutes from './routes/subscriptions.routes.js'
+import profilesRoutes from './routes/profiles.routes.js'
 import { generateScheduledRequests } from './services/subscriptions.service.js'
 import cron from 'node-cron'
 
@@ -110,6 +111,7 @@ app.use('/api/reviews', reviewsRoutes)
 app.use('/api/chat', chatRoutes)
 app.use('/api/payments', paymentsRoutes)
 app.use('/api/subscriptions', subscriptionsRoutes)
+app.use('/api/profiles', profilesRoutes)
 
 app.use((_req, res) => res.status(404).json({ success: false, error: 'Route not found' }))
 app.use(errorHandler)

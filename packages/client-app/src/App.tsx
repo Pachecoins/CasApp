@@ -15,6 +15,7 @@ import { PaymentHistoryPage } from './pages/payment/PaymentHistoryPage'
 import { SubscriptionsPage } from './pages/subscriptions/SubscriptionsPage'
 import { NewSubscriptionPage } from './pages/subscriptions/NewSubscriptionPage'
 import { SubscriptionDetailPage } from './pages/subscriptions/SubscriptionDetailPage'
+import { WorkerProfilePage } from './pages/workers/WorkerProfilePage'
 import { useAuthStore } from './store/auth.store'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -54,6 +55,9 @@ export default function App() {
         <Route path="/requests/:requestId/tracking" element={<ProtectedRoute><TrackingPage /></ProtectedRoute>} />
         <Route path="/requests/:requestId/confirmed" element={<ProtectedRoute><RequestConfirmedPage /></ProtectedRoute>} />
         <Route path="/requests/:requestId/review" element={<ProtectedRoute><ReviewPage /></ProtectedRoute>} />
+
+        {/* Worker profiles */}
+        <Route path="/workers/:workerUserId" element={<ProtectedRoute><WorkerProfilePage /></ProtectedRoute>} />
 
         {/* Subscriptions */}
         <Route path="/subscriptions" element={<ProtectedRoute><SubscriptionsPage /></ProtectedRoute>} />

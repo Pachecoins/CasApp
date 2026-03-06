@@ -41,18 +41,31 @@ export async function getNearbyWorkers(params: NearbyWorkersParams) {
     take: limit * 3, // fetch more to filter by exact distance
   })
 
-  // Calcular distancia exacta y filtrar por radio real
+  // Calcular distancia exacta, filtrar y aplicar ranking compuesto
+  // Score = rating(50%) + proximidad(30%) + confianza/reviews(20%)
   const withDistance = workers
     .map((w) => {
       const dist = calculateDistance(lat, lng, w.currentLatitude!, w.currentLongitude!)
+      const distanceKm = Math.round(dist * 10) / 10
+
+      // Componentes del ranking (0–1 cada uno)
+      const ratingScore = w.rating / 5
+      const proximityScore = Math.min(1, 5 / Math.max(dist, 0.5)) // 5km = score 1, decreases
+      const confidenceScore = Math.min(1, w.totalReviews / 20) // 20+ reviews = score 1
+      const verifiedBonus = w.isVerified ? 0.1 : 0
+
+      const rankScore =
+        ratingScore * 0.5 + proximityScore * 0.3 + confidenceScore * 0.15 + verifiedBonus * 0.05
+
       return {
         ...w,
-        distanceKm: Math.round(dist * 10) / 10,
+        distanceKm,
         estimatedArrivalMin: estimateArrivalMinutes(dist),
+        rankScore: Math.round(rankScore * 100) / 100,
       }
     })
     .filter((w) => w.distanceKm <= radius)
-    .sort((a, b) => a.distanceKm - b.distanceKm)
+    .sort((a, b) => b.rankScore - a.rankScore) // highest rank first
     .slice(0, limit)
 
   return withDistance
