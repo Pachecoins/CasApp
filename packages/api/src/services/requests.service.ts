@@ -2,6 +2,11 @@ import { prisma } from '../config/prisma.js'
 import { calculatePrice, isNighttimeRequest } from '@casapp/shared'
 import type { ServiceType, SubscriptionFrequency } from '@casapp/shared'
 import { io } from '../index.js'
+import {
+  notifyRequestMatched,
+  notifyIncomingRequest,
+  notifyRequestCompleted,
+} from './notifications.service.js'
 
 const ON_DEMAND_EXPIRY_MS = 5 * 60 * 1000 // 5 min antes de ampliar radio
 const ON_DEMAND_NOTIFY_COUNT = 3 // notificar a los 3 más cercanos
@@ -116,12 +121,17 @@ async function notifyNearbyWorkers(
 
   const expiresAt = new Date(Date.now() + ON_DEMAND_EXPIRY_MS).toISOString()
 
-  // Emitir evento Socket.io a cada trabajador disponible
+  // Emitir evento Socket.io + push notification a cada trabajador disponible
   for (const worker of workers) {
     io.to(`worker:${worker.userId}`).emit('worker:incoming-request', {
       request,
       expiresAt,
     })
+    notifyIncomingRequest(
+      worker.userId,
+      request.category.name,
+      0, // distance calculated client-side
+    ).catch(() => {})
   }
 
   // Programar ampliación de radio si nadie acepta en 5 min
@@ -179,13 +189,16 @@ export async function acceptRequest(requestId: string, workerUserId: string) {
     },
   })
 
-  // Notificar al cliente
+  // Notificar al cliente via Socket.io + push
   io.to(`client:${updated.client.userId}`).emit('request:status-change', {
     requestId,
     status: 'MATCHED',
     worker: updated.worker,
     updatedAt: updated.updatedAt.toISOString(),
   })
+
+  const workerName = `${updated.worker!.user.firstName} ${updated.worker!.user.lastName}`
+  notifyRequestMatched(updated.client.userId, workerName, requestId).catch(() => {})
 
   return updated
 }
@@ -240,6 +253,20 @@ export async function updateRequestStatus(
     CONFIRMED: ['IN_PROGRESS', 'CANCELLED'],
     IN_PROGRESS: ['COMPLETED', 'DISPUTED'],
     PENDING: ['CANCELLED'],
+    PENDING_PAYMENT: ['CANCELLED'],
+  }
+
+  // Cancellation policy: ON_DEMAND free within 5 min; charge fee after
+  if (newStatus === 'CANCELLED' && request.type === 'ON_DEMAND') {
+    const ageMs = Date.now() - request.createdAt.getTime()
+    const freeCancellationWindowMs = 5 * 60 * 1000
+    if (ageMs > freeCancellationWindowMs && request.status === 'CONFIRMED') {
+      // Late cancellation — mark paymentStatus as reflecting penalty
+      await prisma.serviceRequest.update({
+        where: { id: requestId },
+        data: { paymentStatus: 'FAILED' }, // signal to trigger refund flow
+      })
+    }
   }
 
   const allowed = allowedTransitions[request.status] ?? []
@@ -259,6 +286,11 @@ export async function updateRequestStatus(
     status: newStatus,
     updatedAt: updated.updatedAt.toISOString(),
   })
+
+  // Push notification cuando el servicio se completa
+  if (newStatus === 'COMPLETED') {
+    notifyRequestCompleted(updated.client.userId, requestId).catch(() => {})
+  }
 
   return updated
 }

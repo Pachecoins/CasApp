@@ -76,12 +76,13 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  clientProfile  ClientProfile?
-  workerProfile  WorkerProfile?
-  notifications  Notification[]
-  reviewsGiven    Review[]       @relation("ReviewerRelation")
-  reviewsReceived Review[]       @relation("RevieweeRelation")
-  chatMessages    ChatMessage[]
+  clientProfile     ClientProfile?
+  workerProfile     WorkerProfile?
+  notifications     Notification[]
+  reviewsGiven      Review[]            @relation("ReviewerRelation")
+  reviewsReceived   Review[]            @relation("RevieweeRelation")
+  chatMessages      ChatMessage[]
+  pushSubscriptions PushSubscription[]
 
   @@index([email])
   @@map("users")
@@ -267,6 +268,21 @@ model Transaction {
   @@index([serviceRequestId])
   @@index([mpPaymentId])
   @@map("transactions")
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
 
 model ChatMessage {

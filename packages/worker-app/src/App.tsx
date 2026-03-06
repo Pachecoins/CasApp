@@ -7,7 +7,9 @@ import { IncomingRequestPage } from './pages/requests/IncomingRequestPage'
 import { JobDetailPage } from './pages/requests/JobDetailPage'
 import { EarningsPage } from './pages/earnings/EarningsPage'
 import { ProfilePage } from './pages/profile/ProfilePage'
+import { WorkerOnboardingPage, shouldShowWorkerOnboarding } from './pages/onboarding/OnboardingPage'
 import { useAuthStore } from './store/auth.store'
+import { usePushNotifications } from './hooks/usePushNotifications'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -17,19 +19,30 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
-  if (isAuthenticated) return <Navigate to="/dashboard" replace />
+  if (isAuthenticated) {
+    const dest = shouldShowWorkerOnboarding() ? '/onboarding' : '/dashboard'
+    return <Navigate to={dest} replace />
+  }
   return <>{children}</>
+}
+
+function AppInner() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  usePushNotifications(isAuthenticated)
+  return null
 }
 
 export default function App() {
   return (
     <BrowserRouter>
+      <AppInner />
       <Routes>
         <Route path="/" element={<SplashPage />} />
 
         <Route path="/login" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
         <Route path="/register" element={<PublicOnlyRoute><RegisterPage /></PublicOnlyRoute>} />
 
+        <Route path="/onboarding" element={<WorkerOnboardingPage />} />
         <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/earnings" element={<ProtectedRoute><EarningsPage /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />

@@ -29,6 +29,10 @@ export const env = {
   MP_PUBLIC_KEY: process.env.MP_PUBLIC_KEY,
   MP_WEBHOOK_SECRET: process.env.MP_WEBHOOK_SECRET,
 
+  VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
+  VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
+  VAPID_EMAIL: process.env.VAPID_EMAIL || 'mailto:hola@casapp.com.ar',
+
   CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,

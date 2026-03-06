@@ -16,7 +16,10 @@ import { SubscriptionsPage } from './pages/subscriptions/SubscriptionsPage'
 import { NewSubscriptionPage } from './pages/subscriptions/NewSubscriptionPage'
 import { SubscriptionDetailPage } from './pages/subscriptions/SubscriptionDetailPage'
 import { WorkerProfilePage } from './pages/workers/WorkerProfilePage'
+import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
+import { OnboardingPage, shouldShowOnboarding } from './pages/onboarding/OnboardingPage'
 import { useAuthStore } from './store/auth.store'
+import { usePushNotifications } from './hooks/usePushNotifications'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -26,19 +29,30 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
-  if (isAuthenticated) return <Navigate to="/home" replace />
+  if (isAuthenticated) {
+    const dest = shouldShowOnboarding() ? '/onboarding' : '/home'
+    return <Navigate to={dest} replace />
+  }
   return <>{children}</>
+}
+
+function AppInner() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  usePushNotifications(isAuthenticated)
+  return null
 }
 
 export default function App() {
   return (
     <BrowserRouter>
+      <AppInner />
       <Routes>
         <Route path="/" element={<SplashPage />} />
 
         <Route path="/login" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
         <Route path="/register" element={<PublicOnlyRoute><RegisterPage /></PublicOnlyRoute>} />
 
+        <Route path="/onboarding" element={<OnboardingPage />} />
         <Route path="/home" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
 
         {/* Service flow */}
@@ -63,6 +77,9 @@ export default function App() {
         <Route path="/subscriptions" element={<ProtectedRoute><SubscriptionsPage /></ProtectedRoute>} />
         <Route path="/subscriptions/new" element={<ProtectedRoute><NewSubscriptionPage /></ProtectedRoute>} />
         <Route path="/subscriptions/:subscriptionId" element={<ProtectedRoute><SubscriptionDetailPage /></ProtectedRoute>} />
+
+        {/* Admin */}
+        <Route path="/admin" element={<ProtectedRoute><AdminDashboardPage /></ProtectedRoute>} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
