@@ -224,7 +224,7 @@ export function RegisterPage() {
                       {isSelected ? <CheckSquare size={20} /> : <Square size={20} className="text-gray-300" />}
                       <span className="font-medium">{cat.name}</span>
                       <span className="ml-auto text-sm text-gray-400">
-                        desde ${cat.basePrice.toLocaleString('es-AR')}
+                        desde ${cat.basePriceStandard.toLocaleString('es-AR')}
                       </span>
                     </button>
                   )

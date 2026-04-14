@@ -8,10 +8,15 @@ const router = Router()
 
 const createRequestSchema = z.object({
   categoryId: z.string(),
-  type: z.enum(['ON_DEMAND', 'SCHEDULED', 'SUBSCRIPTION']),
+  type: z.enum(['ON_DEMAND', 'SCHEDULED', 'SUBSCRIPTION']).optional(),
   address: z.string().min(5),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
+  isGatedCommunity: z.boolean().optional(),
+  lotSize: z.enum(['SMALL', 'MEDIUM', 'LARGE']).optional(),
+  lotAreaM2: z.number().positive().optional(),
+  addons: z.array(z.string()).optional(),
+  equipmentTier: z.enum(['STANDARD', 'PREMIUM']).optional(),
   description: z.string().optional(),
   scheduledAt: z.string().datetime().optional(),
   estimatedDuration: z.number().optional(),
@@ -25,13 +30,15 @@ router.post('/', authenticate, requireRole('CLIENT', 'ADMIN'), async (req: AuthR
   }
 
   if (result.data.type === 'SCHEDULED' && !result.data.scheduledAt) {
-    return sendError(res, 'scheduledAt es requerido para pedidos programados', 422)
+    return sendError(res, 'scheduledAt requerido para pedidos programados', 422)
   }
 
   try {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { type: _type, estimatedDuration: _dur, ...requestData } = result.data
     const request = await requestsService.createRequest({
       clientUserId: req.user!.userId,
-      ...result.data,
+      ...requestData,
     })
     return sendSuccess(res, request, 201, 'Pedido creado exitosamente')
   } catch (err) {
