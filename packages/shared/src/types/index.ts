@@ -196,6 +196,11 @@ export interface Subscription {
   startedAt: string
   cancelledAt?: string
   cancellationNote?: string
+  address: string
+  latitude: number
+  longitude: number
+  preferSameWorker: boolean
+  description?: string
 }
 
 export interface Review {

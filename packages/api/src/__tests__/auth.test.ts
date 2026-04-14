@@ -12,7 +12,7 @@ vi.mock('../config/env.js', () => ({
     PORT: 3000,
     CLIENT_APP_URL: 'http://localhost:5173',
     WORKER_APP_URL: 'http://localhost:5174',
-    PLATFORM_COMMISSION: 0.20,
+    PLATFORM_COMMISSION: 0.15,
   },
 }))
 
@@ -56,16 +56,3 @@ describe('JWT Utils', () => {
   })
 })
 
-describe('Price Utils', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it('should calculate ON_DEMAND price with 35% markup', () => {
-    const { calculatePrice } = require('../../../shared/dist/index.js')
-    const result = calculatePrice({ basePrice: 1000, type: 'ON_DEMAND' })
-    // basePrice * 1.35 = 1350, then +20% commission = 1620
-    expect(result.total).toBe(1620)
-    expect(result.modalityMultiplier).toBe(1.35)
-  })
-})

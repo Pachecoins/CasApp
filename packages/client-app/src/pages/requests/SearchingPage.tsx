@@ -15,14 +15,14 @@ interface NearbyWorker {
   currentLatitude?: number
   currentLongitude?: number
   user: { firstName: string; lastName: string; avatarUrl?: string }
-  workerServices: Array<{ hourlyRate?: number; category: { basePrice: number } }>
+  workerServices: Array<{ hourlyRate?: number; category: { basePriceStandard: number } }>
 }
 
 interface RequestData {
   latitude: number
   longitude: number
   categoryId: string
-  category: { name: string; basePrice: number }
+  category: { name: string }
 }
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
@@ -187,7 +187,7 @@ export function SearchingPage() {
               </div>
             )
             : workers.map((worker) => {
-                const price = worker.workerServices[0]?.category.basePrice
+                const price = worker.workerServices[0]?.category.basePriceStandard
                 return (
                   <div key={worker.id} className="card">
                     <div className="flex items-center gap-3">
@@ -203,7 +203,7 @@ export function SearchingPage() {
                           </h3>
                           {price && (
                             <span className="text-sm font-bold text-primary">
-                              {formatPrice(price * 1.35)}
+                              desde {formatPrice(price)}
                             </span>
                           )}
                         </div>

@@ -23,7 +23,7 @@ export const env = {
   WORKER_APP_URL: process.env.WORKER_APP_URL || 'http://localhost:5174',
   API_URL: process.env.API_URL || 'http://localhost:3000',
 
-  PLATFORM_COMMISSION: parseFloat(process.env.PLATFORM_COMMISSION || '0.20'),
+  PLATFORM_COMMISSION: parseFloat(process.env.PLATFORM_COMMISSION || '0.15'),
 
   MP_ACCESS_TOKEN: process.env.MP_ACCESS_TOKEN,
   MP_PUBLIC_KEY: process.env.MP_PUBLIC_KEY,
