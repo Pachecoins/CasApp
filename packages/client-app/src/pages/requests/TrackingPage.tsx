@@ -7,7 +7,7 @@ import { ChatWidget } from '@/components/chat/ChatWidget'
 import { Button } from '@/components/ui/Button'
 import { requestsService } from '@/services/requests.service'
 import { useAuthStore } from '@/store/auth.store'
-import { estimateArrivalMinutes, calculateDistance } from '@tuki/shared'
+import { estimateArrivalMinutes, calculateDistance } from '@casapp/shared'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 const AUTO_RELEASE_HOURS = 24

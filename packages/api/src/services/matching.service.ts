@@ -1,5 +1,5 @@
 import { prisma } from '../config/prisma.js'
-import { calculateDistance } from '@tuki/shared/utils/distance.js'
+import { calculateDistance } from '@casapp/shared/utils/distance.js'
 
 interface MatchOptions {
   categoryId: string

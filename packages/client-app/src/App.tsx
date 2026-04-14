@@ -17,6 +17,8 @@ import { NewSubscriptionPage } from './pages/subscriptions/NewSubscriptionPage'
 import { SubscriptionDetailPage } from './pages/subscriptions/SubscriptionDetailPage'
 import { WorkerProfilePage } from './pages/workers/WorkerProfilePage'
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
+import { ProfilePage } from './pages/profile/ProfilePage'
+import { RequestsHistoryPage } from './pages/requests/RequestsHistoryPage'
 import { OnboardingPage, shouldShowOnboarding } from './pages/onboarding/OnboardingPage'
 import { useAuthStore } from './store/auth.store'
 import { usePushNotifications } from './hooks/usePushNotifications'
@@ -77,6 +79,12 @@ export default function App() {
         <Route path="/subscriptions" element={<ProtectedRoute><SubscriptionsPage /></ProtectedRoute>} />
         <Route path="/subscriptions/new" element={<ProtectedRoute><NewSubscriptionPage /></ProtectedRoute>} />
         <Route path="/subscriptions/:subscriptionId" element={<ProtectedRoute><SubscriptionDetailPage /></ProtectedRoute>} />
+
+        {/* Profile */}
+        <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+
+        {/* Requests history */}
+        <Route path="/requests" element={<ProtectedRoute><RequestsHistoryPage /></ProtectedRoute>} />
 
         {/* Admin */}
         <Route path="/admin" element={<ProtectedRoute><AdminDashboardPage /></ProtectedRoute>} />

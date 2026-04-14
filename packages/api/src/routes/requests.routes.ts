@@ -138,6 +138,102 @@ router.post(
 
 // GET /api/clients/me/requests  (montado en /api/clients)
 export const clientRequestsRouter = Router()
+
+// GET /api/clients/me/profile
+clientRequestsRouter.get('/me/profile', authenticate, requireRole('CLIENT'), async (req: AuthRequest, res) => {
+  try {
+    const { prisma } = await import('../config/prisma.js')
+    const client = await prisma.clientProfile.findUnique({
+      where: { userId: req.user!.userId },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, avatarUrl: true } },
+        addresses: { orderBy: { isDefault: 'desc' } },
+      },
+    })
+    if (!client) return sendError(res, 'Perfil no encontrado', 404)
+    return sendSuccess(res, client)
+  } catch (err) {
+    return sendError(res, err instanceof Error ? err.message : 'Error', 500)
+  }
+})
+
+// GET /api/clients/me/addresses
+clientRequestsRouter.get('/me/addresses', authenticate, requireRole('CLIENT'), async (req: AuthRequest, res) => {
+  try {
+    const { prisma } = await import('../config/prisma.js')
+    const client = await prisma.clientProfile.findUnique({
+      where: { userId: req.user!.userId },
+      select: { id: true },
+    })
+    if (!client) return sendError(res, 'Perfil no encontrado', 404)
+    const addresses = await prisma.clientAddress.findMany({
+      where: { clientId: client.id },
+      orderBy: { isDefault: 'desc' },
+    })
+    return sendSuccess(res, addresses)
+  } catch (err) {
+    return sendError(res, err instanceof Error ? err.message : 'Error', 500)
+  }
+})
+
+// POST /api/clients/me/addresses
+clientRequestsRouter.post('/me/addresses', authenticate, requireRole('CLIENT'), async (req: AuthRequest, res) => {
+  const schema = z.object({
+    label: z.string().min(1).max(50),
+    address: z.string().min(5),
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+    isGatedCommunity: z.boolean().default(false),
+    isDefault: z.boolean().default(false),
+  })
+  const result = schema.safeParse(req.body)
+  if (!result.success) return sendError(res, 'Datos inválidos', 422, result.error.flatten())
+
+  try {
+    const { prisma } = await import('../config/prisma.js')
+    const client = await prisma.clientProfile.findUnique({
+      where: { userId: req.user!.userId },
+      select: { id: true },
+    })
+    if (!client) return sendError(res, 'Perfil no encontrado', 404)
+
+    // If setting as default, unset previous default
+    if (result.data.isDefault) {
+      await prisma.clientAddress.updateMany({
+        where: { clientId: client.id },
+        data: { isDefault: false },
+      })
+    }
+
+    const newAddress = await prisma.clientAddress.create({
+      data: { clientId: client.id, ...result.data },
+    })
+    return sendSuccess(res, newAddress, 201)
+  } catch (err) {
+    return sendError(res, err instanceof Error ? err.message : 'Error', 400)
+  }
+})
+
+// DELETE /api/clients/me/addresses/:addressId
+clientRequestsRouter.delete('/me/addresses/:addressId', authenticate, requireRole('CLIENT'), async (req: AuthRequest, res) => {
+  try {
+    const { prisma } = await import('../config/prisma.js')
+    const client = await prisma.clientProfile.findUnique({
+      where: { userId: req.user!.userId },
+      select: { id: true },
+    })
+    if (!client) return sendError(res, 'Perfil no encontrado', 404)
+
+    const deleted = await prisma.clientAddress.deleteMany({
+      where: { id: req.params.addressId, clientId: client.id },
+    })
+    if (deleted.count === 0) return sendError(res, 'Dirección no encontrada', 404)
+    return sendSuccess(res, {}, 200, 'Dirección eliminada')
+  } catch (err) {
+    return sendError(res, err instanceof Error ? err.message : 'Error', 400)
+  }
+})
+
 clientRequestsRouter.get('/me/requests', authenticate, requireRole('CLIENT'), async (req: AuthRequest, res) => {
   try {
     const requests = await requestsService.getClientRequests(req.user!.userId)

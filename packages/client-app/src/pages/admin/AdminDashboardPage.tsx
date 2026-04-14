@@ -9,7 +9,7 @@ import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { formatPrice } from '@/lib/utils'
 
-type AdminTab = 'overview' | 'workers' | 'kyc' | 'transactions' | 'users'
+type AdminTab = 'overview' | 'workers' | 'kyc' | 'disputes' | 'transactions' | 'users'
 
 interface Stats {
   users: { total: number; workers: number; clients: number; pendingVerifications: number }
@@ -60,6 +60,23 @@ interface UserItem {
   avatarUrl?: string
 }
 
+interface DisputeItem {
+  id: string
+  reason: string
+  resolvedAt?: string
+  resolution?: string
+  createdAt: string
+  serviceRequest: {
+    id: string
+    status: string
+    quotedPrice?: number
+    address: string
+    category: { name: string }
+    client: { user: { firstName: string; lastName: string } }
+    worker?: { user: { firstName: string; lastName: string } } | null
+  }
+}
+
 interface KycWorkerItem {
   id: string
   kycStatus: string
@@ -101,6 +118,11 @@ export function AdminDashboardPage() {
   const [kycWorkers, setKycWorkers] = useState<KycWorkerItem[]>([])
   const [kycActioning, setKycActioning] = useState<string | null>(null)
 
+  // Disputes tab
+  const [disputes, setDisputes] = useState<DisputeItem[]>([])
+  const [disputeResolution, setDisputeResolution] = useState<Record<string, string>>({})
+  const [resolvingDispute, setResolvingDispute] = useState<string | null>(null)
+
   // Redirect if not admin
   useEffect(() => {
     if (user && user.role !== 'ADMIN') navigate('/home', { replace: true })
@@ -119,6 +141,10 @@ export function AdminDashboardPage() {
       api.get('/admin/kyc/pending')
         .then((r) => setKycWorkers(r.data.data))
         .catch(console.error)
+    } else if (tab === 'disputes') {
+      api.get('/admin/disputes')
+        .then((r) => setDisputes(r.data.data))
+        .catch(console.error)
     } else if (tab === 'transactions') {
       api.get(`/admin/transactions?page=${page}`)
         .then((r) => { setTransactions(r.data.data.transactions); setTotalPages(r.data.data.pages) })
@@ -129,6 +155,27 @@ export function AdminDashboardPage() {
         .catch(console.error)
     }
   }, [tab, page, workerFilter, searchQ])
+
+  const handleResolveDispute = async (disputeId: string, side: 'CLIENT' | 'WORKER') => {
+    const resolution = disputeResolution[disputeId]?.trim()
+    if (!resolution || resolution.length < 5) {
+      alert('Ingresá una resolución (mínimo 5 caracteres)')
+      return
+    }
+    setResolvingDispute(disputeId)
+    try {
+      await api.patch(`/admin/disputes/${disputeId}/resolve`, { side, resolution })
+      setDisputes((prev) => prev.map((d) =>
+        d.id === disputeId
+          ? { ...d, resolvedAt: new Date().toISOString(), resolution }
+          : d,
+      ))
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setResolvingDispute(null)
+    }
+  }
 
   const handleKycAction = async (
     workerId: string,
@@ -184,7 +231,7 @@ export function AdminDashboardPage() {
 
         {/* Tabs */}
         <div className="flex gap-1 overflow-x-auto pb-0.5">
-          {(['overview', 'workers', 'kyc', 'transactions', 'users'] as AdminTab[]).map((t) => (
+          {(['overview', 'workers', 'kyc', 'disputes', 'transactions', 'users'] as AdminTab[]).map((t) => (
             <button
               key={t}
               onClick={() => { setTab(t); setPage(1) }}
@@ -192,9 +239,10 @@ export function AdminDashboardPage() {
                 tab === t ? 'bg-white text-gray-900' : 'text-gray-400 hover:text-white'
               }`}
             >
-              {t === 'overview' ? 'Resumen' :
-               t === 'workers' ? 'Trabajadores' :
-               t === 'kyc' ? `KYC${kycWorkers.length > 0 ? ` (${kycWorkers.length})` : ''}` :
+              {t === 'overview'    ? 'Resumen' :
+               t === 'workers'    ? 'Trabajadores' :
+               t === 'kyc'        ? `KYC${kycWorkers.length > 0 ? ` (${kycWorkers.length})` : ''}` :
+               t === 'disputes'   ? `Disputas${disputes.filter(d => !d.resolvedAt).length > 0 ? ` (${disputes.filter(d => !d.resolvedAt).length})` : ''}` :
                t === 'transactions' ? 'Pagos' : 'Usuarios'}
             </button>
           ))}
@@ -373,6 +421,86 @@ export function AdminDashboardPage() {
                           >
                             <XCircle size={14} />
                             Rechazar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )}
+
+        {/* ── Disputes ── */}
+        {tab === 'disputes' && (
+          <div className="space-y-4">
+            {disputes.length === 0 ? (
+              <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
+                <div className="text-4xl mb-3">🕊️</div>
+                <p className="text-gray-600 font-medium">Sin disputas abiertas</p>
+              </div>
+            ) : (
+              disputes.map((dispute) => {
+                const isResolved = !!dispute.resolvedAt
+                const isResolving = resolvingDispute === dispute.id
+                const price = dispute.serviceRequest.quotedPrice
+
+                return (
+                  <div key={dispute.id} className={`bg-white rounded-2xl p-4 shadow-sm ${isResolved ? 'opacity-60' : ''}`}>
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <div>
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <p className="font-semibold text-gray-900 text-sm">{dispute.serviceRequest.category.name}</p>
+                          {isResolved
+                            ? <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full">Resuelta</span>
+                            : <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">⚠️ Abierta</span>}
+                        </div>
+                        <p className="text-xs text-gray-500">{dispute.serviceRequest.address}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Cliente: {dispute.serviceRequest.client.user.firstName} {dispute.serviceRequest.client.user.lastName}
+                          {dispute.serviceRequest.worker ? ` · Pro: ${dispute.serviceRequest.worker.user.firstName} ${dispute.serviceRequest.worker.user.lastName}` : ''}
+                        </p>
+                      </div>
+                      {price && <p className="font-bold text-gray-900 text-sm flex-shrink-0">{formatPrice(price)}</p>}
+                    </div>
+
+                    {/* Reason */}
+                    <div className="bg-amber-50 rounded-xl px-3 py-2 mb-3">
+                      <p className="text-xs font-semibold text-amber-700 mb-0.5">Motivo de la disputa:</p>
+                      <p className="text-sm text-amber-800">{dispute.reason}</p>
+                    </div>
+
+                    {isResolved ? (
+                      <div className="bg-green-50 rounded-xl px-3 py-2">
+                        <p className="text-xs font-semibold text-green-700 mb-0.5">Resolución:</p>
+                        <p className="text-sm text-green-800">{dispute.resolution}</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <textarea
+                          rows={2}
+                          placeholder="Resolución del moderador (mínimo 5 caracteres)..."
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                          value={disputeResolution[dispute.id] ?? ''}
+                          onChange={(e) => setDisputeResolution((prev) => ({ ...prev, [dispute.id]: e.target.value }))}
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            disabled={isResolving}
+                            onClick={() => handleResolveDispute(dispute.id, 'CLIENT')}
+                            className="flex items-center justify-center gap-1 bg-blue-600 text-white text-xs font-medium py-2.5 rounded-xl disabled:opacity-50"
+                          >
+                            {isResolving ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : null}
+                            🔄 Reembolsar cliente
+                          </button>
+                          <button
+                            disabled={isResolving}
+                            onClick={() => handleResolveDispute(dispute.id, 'WORKER')}
+                            className="flex items-center justify-center gap-1 bg-green-600 text-white text-xs font-medium py-2.5 rounded-xl disabled:opacity-50"
+                          >
+                            💸 Liberar al Pro
                           </button>
                         </div>
                       </div>

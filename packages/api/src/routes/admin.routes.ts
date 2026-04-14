@@ -4,6 +4,7 @@ import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.
 import { sendSuccess, sendError } from '../utils/response.js'
 import { prisma } from '../config/prisma.js'
 import * as kycService from '../services/kyc.service.js'
+import { resolveDisputeForClient, resolveDisputeForWorker } from '../services/escrow.service.js'
 
 const router = Router()
 
@@ -188,6 +189,70 @@ router.get('/transactions', async (req: AuthRequest, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Error'
     return sendError(res, message, 500)
+  }
+})
+
+// ─── DISPUTES ────────────────────────────────────────────────────────────────
+
+// GET /api/admin/disputes
+router.get('/disputes', async (_req, res) => {
+  try {
+    const disputes = await prisma.dispute.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        serviceRequest: {
+          select: {
+            id: true,
+            status: true,
+            quotedPrice: true,
+            address: true,
+            category: { select: { name: true } },
+            client: { include: { user: { select: { firstName: true, lastName: true } } } },
+            worker: { include: { user: { select: { firstName: true, lastName: true } } } },
+          },
+        },
+      },
+    })
+    return sendSuccess(res, disputes)
+  } catch (err) {
+    return sendError(res, err instanceof Error ? err.message : 'Error', 500)
+  }
+})
+
+// PATCH /api/admin/disputes/:id/resolve
+// Body: { side: 'CLIENT' | 'WORKER', resolution: string }
+router.patch('/disputes/:id/resolve', async (req: AuthRequest, res) => {
+  const schema = z.object({
+    side: z.enum(['CLIENT', 'WORKER']),
+    resolution: z.string().min(5, 'Ingresá una resolución con al menos 5 caracteres'),
+  })
+  const result = schema.safeParse(req.body)
+  if (!result.success) return sendError(res, 'side y resolution requeridos', 422, result.error.flatten())
+
+  try {
+    const dispute = await prisma.dispute.findUnique({
+      where: { id: req.params.id },
+      select: { serviceRequestId: true, resolvedAt: true },
+    })
+    if (!dispute) return sendError(res, 'Disputa no encontrada', 404)
+    if (dispute.resolvedAt) return sendError(res, 'Esta disputa ya fue resuelta', 400)
+
+    if (result.data.side === 'CLIENT') {
+      await resolveDisputeForClient({
+        serviceRequestId: dispute.serviceRequestId,
+        resolvedByUserId: req.user!.userId,
+        resolution: result.data.resolution,
+      })
+    } else {
+      await resolveDisputeForWorker({
+        serviceRequestId: dispute.serviceRequestId,
+        resolvedByUserId: req.user!.userId,
+        resolution: result.data.resolution,
+      })
+    }
+    return sendSuccess(res, {}, 200, `Resuelto a favor del ${result.data.side === 'CLIENT' ? 'cliente' : 'trabajador'}`)
+  } catch (err) {
+    return sendError(res, err instanceof Error ? err.message : 'Error', 400)
   }
 })
 

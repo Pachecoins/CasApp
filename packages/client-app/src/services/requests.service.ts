@@ -1,5 +1,5 @@
 import { api } from '@/lib/api'
-import type { LotSize, EquipmentTier, ServiceCategory } from '@tuki/shared'
+import type { LotSize, EquipmentTier, ServiceCategory } from '@casapp/shared'
 
 export interface CreateRequestPayload {
   categoryId: string
@@ -38,6 +38,49 @@ export const requestsService = {
     const { data } = await api.get('/clients/me/requests')
     return data.data
   },
+}
+
+export const clientProfileService = {
+  getProfile: async () => {
+    const { data } = await api.get('/clients/me/profile')
+    return data.data as {
+      id: string
+      user: { id: string; firstName: string; lastName: string; email: string; phone?: string; avatarUrl?: string }
+      addresses: ClientAddress[]
+    }
+  },
+
+  getAddresses: async () => {
+    const { data } = await api.get('/clients/me/addresses')
+    return data.data as ClientAddress[]
+  },
+
+  addAddress: async (payload: {
+    label: string
+    address: string
+    latitude: number
+    longitude: number
+    isGatedCommunity?: boolean
+    isDefault?: boolean
+  }) => {
+    const { data } = await api.post('/clients/me/addresses', payload)
+    return data.data as ClientAddress
+  },
+
+  deleteAddress: async (addressId: string) => {
+    await api.delete(`/clients/me/addresses/${addressId}`)
+  },
+}
+
+interface ClientAddress {
+  id: string
+  clientId: string
+  label: string
+  address: string
+  latitude: number
+  longitude: number
+  isGatedCommunity: boolean
+  isDefault: boolean
 }
 
 export const workersService = {

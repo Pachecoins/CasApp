@@ -1,5 +1,5 @@
 import { prisma } from '../config/prisma.js'
-import { calculateQuote } from '@tuki/shared/utils/price.js'
+import { calculateQuote } from '@casapp/shared/utils/price.js'
 import { io } from '../index.js'
 import {
   notifyRequestMatched,
