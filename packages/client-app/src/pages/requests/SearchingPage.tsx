@@ -53,7 +53,7 @@ export function SearchingPage() {
     socket.emit('join-request-room', requestId)
 
     socket.on('request:status-change', (data: { requestId: string; status: string }) => {
-      if (data.requestId === requestId && data.status === 'MATCHED') {
+      if (data.requestId === requestId && data.status === 'ASSIGNED') {
         setMatched(true)
         setTimeout(() => navigate(`/requests/${requestId}/tracking`), 1500)
       }

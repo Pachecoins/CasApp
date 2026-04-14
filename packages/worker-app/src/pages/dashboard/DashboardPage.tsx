@@ -42,12 +42,26 @@ export function DashboardPage() {
   const [isAvailable, setIsAvailable]           = useState(false)
   const [updatingAvailability, setUpdatingAvailability] = useState(false)
 
+  // Live stats
+  const [todayEarnings, setTodayEarnings]   = useState<number | null>(null)
+  const [todayJobs, setTodayJobs]           = useState<number | null>(null)
+  const [rating, setRating]                 = useState<number | null>(null)
+
   // Mission feed
   const [availableJobs, setAvailableJobs]   = useState<AvailableJob[]>([])
   const [feedLoading, setFeedLoading]       = useState(false)
   const [lastRefreshed, setLastRefreshed]   = useState<Date | null>(null)
 
   const socketRef = useRef<Socket | null>(null)
+
+  // ── Load dashboard stats ─────────────────────────────────────────────────────
+  useEffect(() => {
+    workerRequestsService.getDashboard().then((d) => {
+      setTodayEarnings(d.todayEarnings)
+      setTodayJobs(d.todayJobsCount)
+      setRating(d.rating)
+    }).catch(() => {})
+  }, [])
 
   // ── Socket: listen for incoming real-time request notifications ──────────────
   useEffect(() => {
@@ -173,17 +187,23 @@ export function DashboardPage() {
       <div className="px-4 pt-4">
         <div className="grid grid-cols-3 gap-3 mb-6">
           <div className="card text-center">
-            <div className="text-2xl font-bold text-primary mb-0.5">$0</div>
+            <div className="text-2xl font-bold text-primary mb-0.5">
+              {todayEarnings === null ? '…' : formatPrice(todayEarnings)}
+            </div>
             <div className="text-xs text-gray-500">Hoy</div>
           </div>
           <div className="card text-center">
-            <div className="text-2xl font-bold text-gray-800 mb-0.5">0</div>
+            <div className="text-2xl font-bold text-gray-800 mb-0.5">
+              {todayJobs === null ? '…' : todayJobs}
+            </div>
             <div className="text-xs text-gray-500">Trabajos</div>
           </div>
           <div className="card text-center">
             <div className="flex items-center justify-center gap-1 mb-0.5">
               <Star size={14} className="text-yellow-400 fill-yellow-400" />
-              <span className="text-xl font-bold">—</span>
+              <span className="text-xl font-bold">
+                {rating === null ? '…' : rating > 0 ? rating.toFixed(1) : '—'}
+              </span>
             </div>
             <div className="text-xs text-gray-500">Rating</div>
           </div>

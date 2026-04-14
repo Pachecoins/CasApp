@@ -145,7 +145,7 @@ export async function getWorkerDashboard(userId: string) {
     prisma.serviceRequest.findMany({
       where: {
         workerId: worker.id,
-        status: { in: ['CONFIRMED', 'IN_PROGRESS'] },
+        status: { in: ['ASSIGNED', 'EN_ROUTE', 'IN_PROGRESS', 'FINISHED_PENDING_APPROVAL'] },
       },
       include: {
         client: { include: { user: { select: { firstName: true, lastName: true, phone: true } } } },
@@ -156,9 +156,8 @@ export async function getWorkerDashboard(userId: string) {
     prisma.serviceRequest.findMany({
       where: {
         workerId: worker.id,
-        status: 'MATCHED',
-        type: 'SCHEDULED',
         scheduledAt: { gte: new Date() },
+        status: { notIn: ['CANCELLED', 'COMPLETED'] },
       },
       include: { category: true },
       orderBy: { scheduledAt: 'asc' },
@@ -166,10 +165,20 @@ export async function getWorkerDashboard(userId: string) {
     }),
   ])
 
+  const todayJobsCount = await prisma.serviceRequest.count({
+    where: {
+      workerId: worker.id,
+      status: 'COMPLETED',
+      updatedAt: { gte: today },
+    },
+  })
+
   return {
     worker,
     todayEarnings: todayEarnings._sum.amount ?? 0,
     weekEarnings: weekEarnings._sum.amount ?? 0,
+    todayJobsCount,
+    rating: worker.rating,
     activeRequests,
     upcomingRequests,
   }

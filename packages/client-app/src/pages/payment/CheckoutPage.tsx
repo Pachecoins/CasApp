@@ -4,20 +4,32 @@ import { ArrowLeft, CreditCard, Shield, Zap, Clock, RefreshCw, ChevronRight, Ale
 import { Button } from '@/components/ui/Button'
 import { requestsService, paymentsService } from '@/services/requests.service'
 import { formatPrice } from '@/lib/utils'
-import { calculatePrice, isNighttimeRequest } from '@casapp/shared'
-import type { ServiceRequest } from '@casapp/shared'
 
-const TYPE_LABELS: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  ON_DEMAND: { label: 'On-demand', icon: <Zap size={14} />, color: 'text-secondary' },
-  SCHEDULED: { label: 'Programado', icon: <Clock size={14} />, color: 'text-blue-600' },
-  SUBSCRIPTION: { label: 'Suscripción', icon: <RefreshCw size={14} />, color: 'text-primary' },
+interface RequestDetail {
+  id: string
+  status: string
+  address: string
+  description?: string
+  quotedPrice: number
+  lotSize?: string
+  lotAreaM2?: number
+  addons?: string[]
+  scheduledAt?: string
+  estimatedDuration?: number
+  category: { name: string; slug: string }
+}
+
+const LOT_SIZE_LABELS: Record<string, string> = {
+  SMALL: 'Terreno pequeño',
+  MEDIUM: 'Terreno mediano',
+  LARGE: 'Terreno grande',
 }
 
 export function CheckoutPage() {
   const { requestId } = useParams<{ requestId: string }>()
   const navigate = useNavigate()
 
-  const [request, setRequest] = useState<ServiceRequest | null>(null)
+  const [request, setRequest] = useState<RequestDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -40,13 +52,11 @@ export function CheckoutPage() {
       const result = await paymentsService.createPreference(requestId)
 
       if (result.isMock) {
-        // Development mode: skip MP, auto-approve
         await paymentsService.mockApprove(requestId)
         navigate(`/requests/${requestId}/searching`)
         return
       }
 
-      // Production: redirect to MercadoPago checkout
       window.location.href = result.initPoint
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } }
@@ -64,21 +74,14 @@ export function CheckoutPage() {
     )
   }
 
-  const req = request as ServiceRequest & {
-    category: { name: string; basePrice: number; scheduledPrice: number }
-    finalPrice: number
-    type: string
-  }
+  const isScheduled = Boolean(request.scheduledAt)
+  const total = request.quotedPrice
+  const subtotal = Math.round(total / 1.15)
+  const platformFee = total - subtotal
 
-  const basePrice = req.type === 'SCHEDULED' ? req.category.scheduledPrice : req.category.basePrice
-  const breakdown = calculatePrice({
-    basePrice,
-    type: req.type as 'ON_DEMAND' | 'SCHEDULED' | 'SUBSCRIPTION',
-    isNighttime: req.type === 'ON_DEMAND' ? isNighttimeRequest() : false,
-  })
-
-  const typeMeta = TYPE_LABELS[req.type] ?? TYPE_LABELS.ON_DEMAND
-  const isNight = req.type === 'ON_DEMAND' && isNighttimeRequest()
+  const typeMeta = isScheduled
+    ? { label: 'Programado', icon: <Clock size={14} />, color: 'text-blue-600' }
+    : { label: 'On-demand', icon: <Zap size={14} />, color: 'text-secondary' }
 
   return (
     <div className="min-h-screen bg-background">
@@ -101,79 +104,84 @@ export function CheckoutPage() {
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <div className="flex items-start justify-between mb-3">
             <div>
-              <h2 className="font-heading font-semibold text-gray-900 text-lg">{req.category.name}</h2>
+              <h2 className="font-heading font-semibold text-gray-900 text-lg">{request.category.name}</h2>
               <div className={`flex items-center gap-1 text-xs ${typeMeta.color} mt-0.5`}>
                 {typeMeta.icon}
                 <span>{typeMeta.label}</span>
-                {isNight && (
-                  <span className="ml-1 bg-gray-800 text-white text-[10px] px-1.5 py-0.5 rounded-full">
-                    🌙 Nocturno
-                  </span>
-                )}
               </div>
             </div>
             <span className="text-2xl font-heading font-bold text-primary">
-              {formatPrice(req.finalPrice ?? breakdown.total)}
+              {formatPrice(total)}
             </span>
           </div>
 
-          {req.address && (
+          {request.address && (
             <div className="flex items-start gap-2 text-sm text-gray-600 mt-3 pt-3 border-t border-gray-100">
               <span className="text-gray-400 mt-0.5">📍</span>
-              <span>{req.address}</span>
+              <span>{request.address}</span>
             </div>
           )}
 
-          {req.description && (
-            <p className="text-sm text-gray-500 mt-2">{req.description}</p>
+          {isScheduled && request.scheduledAt && (
+            <div className="flex items-center gap-2 text-sm text-blue-600 mt-2">
+              <RefreshCw size={14} />
+              <span>{new Date(request.scheduledAt).toLocaleString('es-AR', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+            </div>
+          )}
+
+          {request.description && (
+            <p className="text-sm text-gray-500 mt-2">{request.description}</p>
           )}
         </div>
+
+        {/* Service details */}
+        {(request.lotSize || (request.addons && request.addons.length > 0)) && (
+          <div className="bg-white rounded-2xl p-4 shadow-sm">
+            <h3 className="font-medium text-gray-800 mb-3">Detalle del servicio</h3>
+            <div className="space-y-1.5 text-sm text-gray-600">
+              {request.lotSize && (
+                <div className="flex items-center gap-2">
+                  <span>🌿</span>
+                  <span>{LOT_SIZE_LABELS[request.lotSize] ?? request.lotSize}</span>
+                  {request.lotAreaM2 && <span className="text-gray-400">({request.lotAreaM2} m²)</span>}
+                </div>
+              )}
+              {request.addons && request.addons.length > 0 && (
+                <div className="flex items-start gap-2">
+                  <span>➕</span>
+                  <span>Extras: {request.addons.join(', ')}</span>
+                </div>
+              )}
+              {request.estimatedDuration && (
+                <div className="flex items-center gap-2 text-gray-400">
+                  <Clock size={13} />
+                  <span>Duración estimada: ~{request.estimatedDuration} min</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Price breakdown */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <h3 className="font-medium text-gray-800 mb-3">Detalle del precio</h3>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between text-gray-600">
-              <span>Precio base</span>
-              <span>{formatPrice(breakdown.basePrice)}</span>
+              <span>Servicio</span>
+              <span>{formatPrice(subtotal)}</span>
             </div>
-            {breakdown.modalityMultiplier !== 1 && (
-              <div className="flex justify-between text-gray-600">
-                <span>
-                  {breakdown.modalityMultiplier > 1
-                    ? `Recargo ${req.type === 'ON_DEMAND' ? 'on-demand' : ''} (×${breakdown.modalityMultiplier})`
-                    : `Descuento suscripción (×${breakdown.modalityMultiplier})`}
-                </span>
-                <span className={breakdown.modalityMultiplier > 1 ? 'text-secondary' : 'text-primary'}>
-                  {breakdown.modalityMultiplier > 1 ? '+' : ''}
-                  {formatPrice(breakdown.basePrice * (breakdown.modalityMultiplier - 1))}
-                </span>
-              </div>
-            )}
-            {breakdown.nightSurcharge > 0 && (
-              <div className="flex justify-between text-gray-600">
-                <span>Recargo nocturno (+20%)</span>
-                <span className="text-secondary">+{formatPrice(breakdown.nightSurcharge)}</span>
-              </div>
-            )}
-            {breakdown.distanceSurcharge > 0 && (
-              <div className="flex justify-between text-gray-600">
-                <span>Recargo por distancia</span>
-                <span>+{formatPrice(breakdown.distanceSurcharge)}</span>
-              </div>
-            )}
             <div className="flex justify-between text-gray-500 text-xs">
-              <span>Comisión de servicio (20%)</span>
-              <span>{formatPrice(breakdown.platformCommission)}</span>
+              <span>Comisión TUKI (15%)</span>
+              <span>{formatPrice(platformFee)}</span>
             </div>
             <div className="flex justify-between font-semibold text-gray-900 pt-2 border-t border-gray-100">
               <span>Total</span>
-              <span className="text-primary text-lg">{formatPrice(req.finalPrice ?? breakdown.total)}</span>
+              <span className="text-primary text-lg">{formatPrice(total)}</span>
             </div>
           </div>
         </div>
 
-        {/* Trust signals */}
+        {/* Trust signal */}
         <div className="bg-green-50 rounded-2xl p-4">
           <div className="flex items-start gap-3">
             <Shield size={20} className="text-primary mt-0.5 flex-shrink-0" />
@@ -230,11 +238,11 @@ export function CheckoutPage() {
           onClick={handlePay}
         >
           <CreditCard size={18} className="mr-2" />
-          Pagar {formatPrice(req.finalPrice ?? breakdown.total)} con MercadoPago
+          Pagar {formatPrice(total)} con MercadoPago
         </Button>
         <p className="text-center text-xs text-gray-400">
           Al continuar, aceptás los{' '}
-          <span className="underline">Términos y Condiciones</span> de CasApp
+          <span className="underline">Términos y Condiciones</span> de TUKI
         </p>
       </div>
     </div>

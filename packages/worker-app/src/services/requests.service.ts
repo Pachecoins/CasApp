@@ -47,6 +47,18 @@ export const workerRequestsService = {
     }>
   },
 
+  getDashboard: async () => {
+    const { data } = await api.get('/workers/me/dashboard')
+    return data.data as {
+      todayEarnings: number
+      weekEarnings: number
+      todayJobsCount: number
+      rating: number
+      activeRequests: unknown[]
+      upcomingRequests: unknown[]
+    }
+  },
+
   updateAvailability: async (isAvailable: boolean) => {
     const { data } = await api.patch('/workers/me/availability', { isAvailable })
     return data.data
