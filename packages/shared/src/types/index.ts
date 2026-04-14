@@ -2,24 +2,52 @@
 
 export type Role = 'CLIENT' | 'WORKER' | 'ADMIN'
 
-export type ServiceType = 'ON_DEMAND' | 'SCHEDULED' | 'SUBSCRIPTION'
+/**
+ * TUKI order state machine:
+ * searching → assigned → en_route → in_progress → finished_pending_approval
+ *           → completed  |  disputed
+ */
+export type OrderStatus =
+  | 'SEARCHING'                 // broadcasting to nearby workers
+  | 'ASSIGNED'                  // a worker claimed the job (atomic)
+  | 'EN_ROUTE'                  // worker pressed "En camino"
+  | 'IN_PROGRESS'               // worker pressed "Llegué al domicilio"
+  | 'FINISHED_PENDING_APPROVAL' // worker uploaded completion photo
+  | 'COMPLETED'                 // client pressed "Todo excelente / Liberar pago"
+  | 'DISPUTED'                  // dispute opened — funds frozen
+  | 'CANCELLED'                 // cancelled before assignment
 
-export type ServiceStatus =
-  | 'PENDING'
-  | 'MATCHED'
-  | 'CONFIRMED'
-  | 'IN_PROGRESS'
-  | 'COMPLETED'
-  | 'CANCELLED'
-  | 'DISPUTED'
+/** Kept for backwards-compat with existing route code; alias of OrderStatus */
+export type ServiceStatus = OrderStatus
 
-export type PaymentStatus = 'PENDING' | 'PAID' | 'REFUNDED' | 'FAILED'
+/** Visual lot-size selector shown to the client during quoting */
+export type LotSize = 'SMALL' | 'MEDIUM' | 'LARGE'
+
+/** Worker equipment tier — drives per-m² pricing and speed estimates */
+export type EquipmentTier = 'STANDARD' | 'PREMIUM'
 
 export type SubscriptionFrequency = 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY'
+
+export type PaymentStatus = 'PENDING' | 'CAPTURED' | 'RELEASED' | 'REFUNDED' | 'FAILED'
+
+export type EscrowStatus = 'HELD' | 'RELEASED' | 'FROZEN' | 'REFUNDED'
 
 export type TransactionStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'REFUNDED'
 
 export type TransactionMethod = 'MERCADOPAGO' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'CASH'
+
+/** Qualitative review tags selectable by the client */
+export type ReviewTag = 'PUNCTUAL' | 'HONEST' | 'TIDY' | 'PROFESSIONAL' | 'CAREFUL'
+
+// ─── ADDON DEFINITIONS ───────────────────────────────────────────────────────
+
+export interface AddonDefinition {
+  key: string
+  label: string
+  description?: string
+  surchargeType: 'flat' | 'percent'
+  value: number // flat: ARS amount; percent: percentage integer (e.g. 20 = 20%)
+}
 
 // ─── BASE ENTITIES ────────────────────────────────────────────────────────────
 
@@ -38,10 +66,19 @@ export interface User {
 export interface ClientProfile {
   id: string
   userId: string
-  address?: string
-  latitude?: number
-  longitude?: number
   preferredPaymentMethod?: string
+  addresses: ClientAddress[]
+}
+
+export interface ClientAddress {
+  id: string
+  clientId: string
+  label: string            // "Casa", "Trabajo", "Country", etc.
+  address: string
+  latitude: number
+  longitude: number
+  isGatedCommunity: boolean // only insured workers shown for gated communities
+  isDefault: boolean
 }
 
 export interface WorkerProfile {
@@ -54,8 +91,36 @@ export interface WorkerProfile {
   currentLatitude?: number
   currentLongitude?: number
   radiusKm: number
+
+  // Onboarding / identity
   isVerified: boolean
   identityVerified: boolean
+  dniFrontUrl?: string
+  dniBackUrl?: string
+  selfieBiometricUrl?: string
+
+  // Insurance (required for gated-community jobs)
+  insurancePolicyUrl?: string
+  insuranceVerified: boolean
+  insuranceExpiresAt?: string
+
+  // Bank account (CBU/CVU must match DNI)
+  bankCvu?: string
+  bankAccountVerified: boolean
+
+  // Wallet
+  walletBalanceCents: number
+}
+
+export interface WorkerEquipment {
+  id: string
+  workerId: string
+  name: string
+  description?: string
+  photoUrl: string
+  isVerified: boolean
+  verifiedAt?: string
+  createdAt: string
 }
 
 export interface ServiceCategory {
@@ -64,8 +129,11 @@ export interface ServiceCategory {
   slug: string
   iconUrl?: string
   description?: string
-  basePrice: number
-  scheduledPrice: number
+  basePriceStandard: number
+  basePricePremium: number
+  pricePerM2Standard: number
+  pricePerM2Premium: number
+  addonDefinitions: AddonDefinition[]
   isActive: boolean
 }
 
@@ -73,9 +141,9 @@ export interface WorkerService {
   id: string
   workerId: string
   categoryId: string
+  equipmentTier: EquipmentTier
   yearsExperience: number
-  hourlyRate?: number
-  portfolio: string[]
+  portfolio: string[] // photo URLs
   isActive: boolean
 }
 
@@ -84,17 +152,32 @@ export interface ServiceRequest {
   clientId: string
   categoryId: string
   workerId?: string
-  type: ServiceType
-  status: ServiceStatus
-  scheduledAt?: string
+  status: OrderStatus
+
+  // Location
   address: string
   latitude: number
   longitude: number
-  description?: string
-  estimatedDuration?: number
+
+  // Quoting
+  lotSize?: LotSize
+  lotAreaM2?: number
+  addons: string[] // array of addon keys
+  quotedPrice?: number
   finalPrice?: number
+  platformFeePercent: number
+
+  // Payment
   paymentStatus: PaymentStatus
   paymentIntentId?: string
+
+  // Evidence
+  completionPhotoUrl?: string
+
+  scheduledAt?: string
+  description?: string
+  estimatedDuration?: number
+
   createdAt: string
   updatedAt: string
 }
@@ -102,10 +185,9 @@ export interface ServiceRequest {
 export interface Subscription {
   id: string
   clientId: string
-  workerId?: string
+  workerId?: string // the Pro the client subscribed to ("TUKI Favorito")
   categoryId: string
   frequency: SubscriptionFrequency
-  preferSameWorker: boolean
   dayOfWeek: number
   timeSlot: string
   isActive: boolean
@@ -113,6 +195,7 @@ export interface Subscription {
   pricePerVisit: number
   startedAt: string
   cancelledAt?: string
+  cancellationNote?: string
 }
 
 export interface Review {
@@ -120,19 +203,9 @@ export interface Review {
   serviceRequestId: string
   reviewerId: string
   revieweeId: string
-  rating: number
+  rating: number        // 1–5 stars
   comment?: string
-  createdAt: string
-}
-
-export interface Notification {
-  id: string
-  userId: string
-  title: string
-  body: string
-  type: string
-  isRead: boolean
-  metadata?: Record<string, unknown>
+  tags: ReviewTag[]     // qualitative tags: "Puntual", "Prolijo", etc.
   createdAt: string
 }
 
@@ -142,9 +215,54 @@ export interface Transaction {
   amount: number
   currency: string
   method: TransactionMethod
-  mpPaymentId?: string
   status: TransactionStatus
+  mpPaymentId?: string
+  mpPreferenceId?: string
+
+  // Escrow
+  escrowStatus: EscrowStatus
+  heldAt?: string
+  releasedAt?: string
+  frozenAt?: string
+  refundedAt?: string
+
+  workerEarnings?: number
+  platformFee?: number
+
   createdAt: string
+  updatedAt: string
+}
+
+export interface Dispute {
+  id: string
+  serviceRequestId: string
+  raisedByUserId: string
+  reason: string
+  evidenceUrls: string[]
+  resolvedAt?: string
+  resolvedByUserId?: string
+  resolution?: string
+  createdAt: string
+}
+
+export interface Notification {
+  id: string
+  userId: string
+  title: string
+  body: string
+  type: 'ORDER_UPDATE' | 'PAYMENT' | 'REVIEW' | 'CHAT' | 'SYSTEM'
+  isRead: boolean
+  metadata?: Record<string, unknown>
+  createdAt: string
+}
+
+export interface ChatMessage {
+  id: string
+  requestId: string
+  senderId: string
+  senderName: string
+  message: string
+  timestamp: string
 }
 
 // ─── API TYPES ────────────────────────────────────────────────────────────────
@@ -172,9 +290,11 @@ export interface RegisterClientPayload {
   firstName: string
   lastName: string
   phone?: string
+  // First address
   address?: string
   latitude?: number
   longitude?: number
+  isGatedCommunity?: boolean
 }
 
 export interface RegisterWorkerPayload {
@@ -208,23 +328,43 @@ export interface UserWithProfile extends User {
 
 export interface WorkerPublicProfile extends WorkerProfile {
   user: Pick<User, 'id' | 'firstName' | 'lastName' | 'avatarUrl'>
-  workerServices: Array<
-    WorkerService & {
-      category: ServiceCategory
-    }
-  >
+  workerServices: Array<WorkerService & { category: ServiceCategory }>
+  equipment: WorkerEquipment[]
   distanceKm?: number
   estimatedArrivalMin?: number
 }
 
 export interface ServiceRequestWithDetails extends ServiceRequest {
-  client?: ClientProfile & { user: Pick<User, 'firstName' | 'lastName' | 'avatarUrl' | 'phone'> }
-  worker?: WorkerProfile & { user: Pick<User, 'firstName' | 'lastName' | 'avatarUrl' | 'phone'> }
+  client?: Pick<User, 'firstName' | 'lastName' | 'avatarUrl' | 'phone'>
+  worker?: WorkerPublicProfile
   category?: ServiceCategory
   review?: Review
+  transaction?: Transaction
 }
 
-// ─── PRICE CALCULATION ────────────────────────────────────────────────────────
+// ─── QUOTING ──────────────────────────────────────────────────────────────────
+
+export interface QuoteParams {
+  categorySlug: string
+  lotSize: LotSize
+  lotAreaM2?: number             // optional exact area; used when provided
+  selectedAddons: string[]       // addon keys
+  equipmentTier: EquipmentTier
+  isGatedCommunity?: boolean
+}
+
+export interface QuoteBreakdown {
+  basePrice: number              // base price for the lot size & tier
+  areasSurcharge: number         // extra for m² above SMALL threshold
+  addonsTotal: number            // sum of selected addons
+  subtotal: number
+  platformFee: number            // TUKI commission (15% of subtotal)
+  total: number                  // what the client pays
+  workerEarnings: number         // what the worker receives
+  estimatedDurationMin: number   // rough job duration estimate
+}
+
+// ─── PRICE CALCULATION (legacy, kept for compatibility) ───────────────────────
 
 export interface PriceBreakdown {
   basePrice: number
@@ -237,7 +377,7 @@ export interface PriceBreakdown {
 
 export interface CalculatePriceParams {
   basePrice: number
-  type: ServiceType
+  type: 'ON_DEMAND' | 'SCHEDULED' | 'SUBSCRIPTION'
   frequency?: SubscriptionFrequency
   distanceKm?: number
   isNighttime?: boolean
@@ -252,22 +392,17 @@ export interface WorkerLocationUpdate {
   requestId?: string
 }
 
-export interface RequestStatusChange {
+export interface OrderStatusChange {
   requestId: string
-  status: ServiceStatus
+  status: OrderStatus
   updatedAt: string
+  completionPhotoUrl?: string // included when moving to FINISHED_PENDING_APPROVAL
 }
+
+/** @deprecated Use OrderStatusChange */
+export interface RequestStatusChange extends OrderStatusChange {}
 
 export interface IncomingRequest {
   request: ServiceRequestWithDetails
-  expiresAt: string
-}
-
-export interface ChatMessage {
-  id: string
-  requestId: string
-  senderId: string
-  senderName: string
-  message: string
-  timestamp: string
+  expiresAt: string // ISO datetime — worker has ~30s to accept before it broadcasts to next
 }

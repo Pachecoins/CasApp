@@ -1,5 +1,5 @@
-// CasApp - Prisma Schema
-// Plataforma de servicios del hogar on-demand
+// TUKI — Prisma Schema
+// Plataforma on-demand de servicios para el hogar (MVP: Jardinería + Piletas)
 
 generator client {
   provider = "prisma-client-js"
@@ -18,34 +18,60 @@ enum Role {
   ADMIN
 }
 
-enum ServiceType {
-  ON_DEMAND
-  SCHEDULED
-  SUBSCRIPTION
+// TUKI order state machine:
+// searching → assigned → en_route → in_progress → finished_pending_approval
+//          → completed  |  disputed
+enum OrderStatus {
+  SEARCHING                 // client submitted, broadcasting to nearby workers
+  ASSIGNED                  // a worker accepted (atomic claim)
+  EN_ROUTE                  // worker pressed "En camino"
+  IN_PROGRESS               // worker pressed "Llegué al domicilio"
+  FINISHED_PENDING_APPROVAL // worker uploaded completion photo, awaiting client approval
+  COMPLETED                 // client pressed "Todo excelente / Liberar pago"
+  DISPUTED                  // client opened a dispute; funds frozen pending moderator
+  CANCELLED                 // cancelled before a worker was assigned
 }
 
-enum ServiceStatus {
-  PENDING_PAYMENT
-  PENDING
-  MATCHED
-  CONFIRMED
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
-  DISPUTED
+// Visual lot-size selector shown to the client during quoting
+enum LotSize {
+  SMALL   // "Chico"   — up to ~100 m²
+  MEDIUM  // "Mediano" — 100–300 m²
+  LARGE   // "Grande"  — 300 m²+
 }
 
-enum PaymentStatus {
-  PENDING
-  PAID
-  REFUNDED
-  FAILED
+// Worker equipment tier; drives per-m² pricing
+enum EquipmentTier {
+  STANDARD // manual / basic tools — cheaper, slower
+  PREMIUM  // tractors, robots, advanced machinery — faster, pricier
 }
 
 enum SubscriptionFrequency {
   WEEKLY
   BIWEEKLY
   MONTHLY
+}
+
+enum PaymentStatus {
+  PENDING
+  CAPTURED  // funds captured in escrow
+  RELEASED  // funds transferred to worker wallet
+  REFUNDED  // funds returned to client
+  FAILED
+}
+
+// Escrow lifecycle tracked per-transaction
+enum EscrowStatus {
+  HELD      // captured, held by TUKI
+  RELEASED  // disbursed to worker (triggered by client approval)
+  FROZEN    // dispute opened — no movement until moderator resolves
+  REFUNDED  // returned to client
+}
+
+enum TransactionMethod {
+  MERCADOPAGO
+  CREDIT_CARD
+  DEBIT_CARD
+  CASH
 }
 
 enum TransactionStatus {
@@ -55,11 +81,13 @@ enum TransactionStatus {
   REFUNDED
 }
 
-enum TransactionMethod {
-  MERCADOPAGO
-  CREDIT_CARD
-  DEBIT_CARD
-  CASH
+// Qualitative review tags ("Puntual", "Honesto", "Prolijo", ...)
+enum ReviewTag {
+  PUNCTUAL     // Puntual
+  HONEST       // Honesto
+  TIDY         // Prolijo
+  PROFESSIONAL // Profesional
+  CAREFUL      // Cuidadoso
 }
 
 // ─── MODELS ──────────────────────────────────────────────────────────────────
@@ -79,8 +107,8 @@ model User {
   clientProfile     ClientProfile?
   workerProfile     WorkerProfile?
   notifications     Notification[]
-  reviewsGiven      Review[]            @relation("ReviewerRelation")
-  reviewsReceived   Review[]            @relation("RevieweeRelation")
+  reviewsGiven      Review[]           @relation("ReviewerRelation")
+  reviewsReceived   Review[]           @relation("RevieweeRelation")
   chatMessages      ChatMessage[]
   pushSubscriptions PushSubscription[]
 
@@ -88,53 +116,122 @@ model User {
   @@map("users")
 }
 
+// ─── CLIENT ──────────────────────────────────────────────────────────────────
+
 model ClientProfile {
   id                     String  @id @default(cuid())
   userId                 String  @unique
-  address                String?
-  latitude               Float?
-  longitude              Float?
   preferredPaymentMethod String?
 
-  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  addresses       ClientAddress[]
   serviceRequests ServiceRequest[]
   subscriptions   Subscription[]
 
   @@map("client_profiles")
 }
 
+// Clients can have multiple saved addresses (home, country, office, …)
+model ClientAddress {
+  id               String  @id @default(cuid())
+  clientId         String
+  label            String  @default("Casa") // "Casa", "Trabajo", "Country", etc.
+  address          String
+  latitude         Float
+  longitude        Float
+  // Gated-community flag: only workers with validated ART/insurance are shown
+  isGatedCommunity Boolean @default(false)
+  isDefault        Boolean @default(false)
+
+  client ClientProfile @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("client_addresses")
+}
+
+// ─── WORKER ──────────────────────────────────────────────────────────────────
+
 model WorkerProfile {
-  id                 String  @id @default(cuid())
-  userId             String  @unique
-  bio                String?
-  rating             Float   @default(0)
-  totalReviews       Int     @default(0)
-  isAvailable        Boolean @default(false)
-  currentLatitude    Float?
-  currentLongitude   Float?
-  radiusKm           Float   @default(10)
+  id               String        @id @default(cuid())
+  userId           String        @unique
+  bio              String?
+  rating           Float         @default(0)
+  totalReviews     Int           @default(0)
+  isAvailable      Boolean       @default(false)
+  currentLatitude  Float?
+  currentLongitude Float?
+  radiusKm         Float         @default(10)
+
+  // Onboarding / integrity filter
   isVerified         Boolean @default(false)
   identityVerified   Boolean @default(false)
-  bankAccountInfo    String? // encrypted
+  dniFrontUrl        String? // photo of DNI front
+  dniBackUrl         String? // photo of DNI back
+  selfieBiometricUrl String? // selfie for biometric check
 
-  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workerServices   WorkerService[]
-  serviceRequests  ServiceRequest[]
-  subscriptions    Subscription[]
+  // ART / personal-accident insurance — required for gated-community jobs
+  insurancePolicyUrl  String?
+  insuranceVerified   Boolean   @default(false)
+  insuranceExpiresAt  DateTime?
+
+  // Bank account: must match DNI (validated before first payout)
+  bankCvu            String? // CBU/CVU (stored encrypted in production)
+  bankAccountVerified Boolean @default(false)
+
+  // Wallet balance (in ARS cents to avoid float rounding)
+  walletBalanceCents Int @default(0)
+
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workerServices WorkerService[]
+  equipment      WorkerEquipment[]
+  serviceRequests ServiceRequest[]
+  subscriptions  Subscription[]
 
   @@index([isAvailable, currentLatitude, currentLongitude])
   @@map("worker_profiles")
 }
 
+// Equipment items uploaded by the worker to justify their tier / pricing
+model WorkerEquipment {
+  id          String    @id @default(cuid())
+  workerId    String
+  name        String    // "Cortadora de pasto Husqvarna", "Robot cortacésped", etc.
+  description String?
+  photoUrl    String
+  // Admin verifies equipment matches claimed tier
+  isVerified  Boolean   @default(false)
+  verifiedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  worker WorkerProfile @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@index([workerId])
+  @@map("worker_equipment")
+}
+
+// ─── SERVICES ────────────────────────────────────────────────────────────────
+
 model ServiceCategory {
-  id             String  @id @default(cuid())
-  name           String  @unique
-  slug           String  @unique
-  iconUrl        String?
-  description    String?
-  basePrice      Float
-  scheduledPrice Float
-  isActive       Boolean @default(true)
+  id          String  @id @default(cuid())
+  name        String  @unique
+  slug        String  @unique
+  iconUrl     String?
+  description String?
+
+  // Base price per tier for the SMALL lot size (ARS)
+  basePriceStandard Float
+  basePricePremium  Float
+
+  // Per-m² surcharge applied above the SMALL threshold, per tier (ARS/m²)
+  pricePerM2Standard Float @default(0)
+  pricePerM2Premium  Float @default(0)
+
+  // JSON array of addon definitions available for this category.
+  // Shape: [{ key: string, label: string, surchargeType: "flat"|"percent", value: number }]
+  // Example: [{ key: "tall_grass", label: "Pasto alto (+20%)", surchargeType: "percent", value: 20 }]
+  addonDefinitions Json @default("[]")
+
+  isActive Boolean @default(true)
 
   workerServices  WorkerService[]
   serviceRequests ServiceRequest[]
@@ -144,14 +241,16 @@ model ServiceCategory {
   @@map("service_categories")
 }
 
+// Pivot: which categories a worker offers, at which equipment tier
 model WorkerService {
-  id              String  @id @default(cuid())
+  id              String        @id @default(cuid())
   workerId        String
   categoryId      String
-  yearsExperience Int     @default(0)
-  hourlyRate      Float?
-  portfolio       Json    @default("[]")
-  isActive        Boolean @default(true)
+  equipmentTier   EquipmentTier @default(STANDARD)
+  yearsExperience Int           @default(0)
+  // Portfolio: array of photo URLs showcasing past work
+  portfolio       Json          @default("[]")
+  isActive        Boolean       @default(true)
 
   worker   WorkerProfile   @relation(fields: [workerId], references: [id], onDelete: Cascade)
   category ServiceCategory @relation(fields: [categoryId], references: [id])
@@ -160,52 +259,78 @@ model WorkerService {
   @@map("worker_services")
 }
 
+// ─── ORDERS ──────────────────────────────────────────────────────────────────
+
 model ServiceRequest {
-  id                String        @id @default(cuid())
-  clientId          String
-  categoryId        String
-  workerId          String?
-  type              ServiceType
-  status            ServiceStatus @default(PENDING)
-  scheduledAt       DateTime?
-  address           String
-  latitude          Float
-  longitude         Float
+  id         String      @id @default(cuid())
+  clientId   String
+  categoryId String
+  workerId   String?
+  status     OrderStatus @default(SEARCHING)
+
+  // Location of the job
+  address   String
+  latitude  Float
+  longitude Float
+
+  // Visual lot sizing + optional exact area
+  lotSize   LotSize?
+  lotAreaM2 Float?
+
+  // Selected addons (array of addon keys from ServiceCategory.addonDefinitions)
+  // Example: ["tall_grass", "remove_weeds"]
+  addons Json @default("[]")
+
+  // Pricing
+  quotedPrice Float?  // price shown to client before confirmation
+  finalPrice  Float?  // price after any adjustments (disputes, etc.)
+  platformFeePercent Float @default(15) // TUKI commission %
+
+  // Payment
+  paymentStatus   PaymentStatus @default(PENDING)
+  paymentIntentId String?       // MercadoPago preference/intent ID
+
+  // Scheduling (for subscription-generated orders)
+  scheduledAt DateTime?
+
+  // Evidence: worker must upload this before moving to FINISHED_PENDING_APPROVAL
+  completionPhotoUrl String?
+
   description       String?
-  estimatedDuration Int? // in minutes
-  finalPrice        Float?
-  paymentStatus     PaymentStatus @default(PENDING)
-  paymentIntentId   String?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  estimatedDuration Int?    // in minutes
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   client       ClientProfile   @relation(fields: [clientId], references: [id])
   worker       WorkerProfile?  @relation(fields: [workerId], references: [id])
   category     ServiceCategory @relation(fields: [categoryId], references: [id])
-  review        Review?
-  transactions  Transaction[]
-  chatMessages  ChatMessage[]
+  review       Review?
+  transactions Transaction[]
+  chatMessages ChatMessage[]
 
   @@index([clientId, status])
   @@index([workerId, status])
-  @@index([status, type])
+  @@index([status, categoryId])
   @@map("service_requests")
 }
 
+// ─── SUBSCRIPTIONS ("TUKI Favorito") ─────────────────────────────────────────
+
 model Subscription {
-  id                String                @id @default(cuid())
-  clientId          String
-  workerId          String?
-  categoryId        String
-  frequency         SubscriptionFrequency
-  preferSameWorker  Boolean               @default(false)
-  dayOfWeek         Int // 0=Sunday, 1=Monday, ..., 6=Saturday
-  timeSlot          String // "09:00", "14:00", etc.
-  isActive          Boolean               @default(true)
-  nextServiceDate   DateTime?
-  pricePerVisit     Float
-  startedAt         DateTime              @default(now())
-  cancelledAt       DateTime?
+  id               String                @id @default(cuid())
+  clientId         String
+  workerId         String?               // preferred worker (the one the client rated and subscribed to)
+  categoryId       String
+  frequency        SubscriptionFrequency
+  dayOfWeek        Int                   // 0=Sunday … 6=Saturday
+  timeSlot         String                // "09:00", "14:00", etc.
+  isActive         Boolean               @default(true)
+  nextServiceDate  DateTime?
+  pricePerVisit    Float
+  startedAt        DateTime              @default(now())
+  cancelledAt      DateTime?
+  cancellationNote String?
 
   client   ClientProfile   @relation(fields: [clientId], references: [id])
   worker   WorkerProfile?  @relation(fields: [workerId], references: [id])
@@ -216,14 +341,18 @@ model Subscription {
   @@map("subscriptions")
 }
 
+// ─── REVIEWS ─────────────────────────────────────────────────────────────────
+
 model Review {
-  id               String   @id @default(cuid())
-  serviceRequestId String   @unique
+  id               String      @id @default(cuid())
+  serviceRequestId String      @unique
   reviewerId       String
   revieweeId       String
-  rating           Int // 1-5
+  rating           Int         // 1–5 stars
   comment          String?
-  createdAt        DateTime @default(now())
+  // Qualitative tags chosen by the client, e.g. ["PUNCTUAL","TIDY"]
+  tags             ReviewTag[]
+  createdAt        DateTime    @default(now())
 
   serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id])
   reviewer       User           @relation("ReviewerRelation", fields: [reviewerId], references: [id])
@@ -233,12 +362,72 @@ model Review {
   @@map("reviews")
 }
 
+// ─── PAYMENTS & ESCROW ───────────────────────────────────────────────────────
+
+model Transaction {
+  id               String            @id @default(cuid())
+  serviceRequestId String
+  amount           Float             // total charged to client (ARS)
+  currency         String            @default("ARS")
+  method           TransactionMethod
+  status           TransactionStatus @default(PENDING)
+
+  // MercadoPago identifiers
+  mpPaymentId    String?
+  mpPreferenceId String?
+
+  // Escrow lifecycle
+  escrowStatus EscrowStatus @default(HELD)
+  heldAt       DateTime?    // when funds were captured
+  releasedAt   DateTime?    // when funds were released to worker
+  frozenAt     DateTime?    // when dispute was raised
+  refundedAt   DateTime?    // when refund was issued
+
+  // Worker earnings after TUKI commission
+  workerEarnings Float?
+  platformFee    Float?
+
+  // Raw webhook payload for audit / debugging
+  rawWebhookData Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id])
+
+  @@index([serviceRequestId])
+  @@index([mpPaymentId])
+  @@index([escrowStatus])
+  @@map("transactions")
+}
+
+// ─── SUPPORT / DISPUTES ──────────────────────────────────────────────────────
+
+model Dispute {
+  id               String   @id @default(cuid())
+  serviceRequestId String   @unique
+  raisedByUserId   String
+  reason           String
+  evidenceUrls     Json     @default("[]") // photos/messages provided by either party
+  // Resolution
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  resolution       String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([serviceRequestId])
+  @@map("disputes")
+}
+
+// ─── NOTIFICATIONS ───────────────────────────────────────────────────────────
+
 model Notification {
   id        String   @id @default(cuid())
   userId    String
   title     String
   body      String
-  type      String
+  type      String   // "ORDER_UPDATE" | "PAYMENT" | "REVIEW" | "CHAT" | "SYSTEM"
   isRead    Boolean  @default(false)
   metadata  Json?
   createdAt DateTime @default(now())
@@ -247,27 +436,6 @@ model Notification {
 
   @@index([userId, isRead])
   @@map("notifications")
-}
-
-model Transaction {
-  id               String            @id @default(cuid())
-  serviceRequestId String
-  amount           Float
-  currency         String            @default("ARS")
-  method           TransactionMethod
-  mpPaymentId      String?
-  mpPreferenceId   String?
-  workerEarnings   Float?
-  status           TransactionStatus @default(PENDING)
-  rawWebhookData   Json?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-
-  serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id])
-
-  @@index([serviceRequestId])
-  @@index([mpPaymentId])
-  @@map("transactions")
 }
 
 model PushSubscription {
@@ -284,6 +452,8 @@ model PushSubscription {
   @@index([userId])
   @@map("push_subscriptions")
 }
+
+// ─── CHAT ────────────────────────────────────────────────────────────────────
 
 model ChatMessage {
   id               String   @id @default(cuid())
