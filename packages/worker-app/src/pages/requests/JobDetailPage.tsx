@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, type ChangeEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Phone, MessageSquare, Navigation, CheckCircle, PlayCircle, MapPin } from 'lucide-react'
 import { io, type Socket } from 'socket.io-client'
@@ -28,17 +28,19 @@ interface JobRequest {
   }
 }
 
-const STATUS_STEPS = ['MATCHED', 'CONFIRMED', 'IN_PROGRESS', 'COMPLETED']
+// Updated state machine names to match TUKI OrderStatus
+const STATUS_STEPS = ['ASSIGNED', 'EN_ROUTE', 'IN_PROGRESS', 'FINISHED_PENDING_APPROVAL', 'COMPLETED']
 const STATUS_LABELS: Record<string, string> = {
-  MATCHED: 'Aceptado',
-  CONFIRMED: 'En camino',
-  IN_PROGRESS: 'Trabajando',
-  COMPLETED: 'Completado',
+  ASSIGNED:                  'Aceptado',
+  EN_ROUTE:                  'En camino',
+  IN_PROGRESS:               'Trabajando',
+  FINISHED_PENDING_APPROVAL: 'Esperando aprobación del cliente',
+  COMPLETED:                 'Completado',
 }
 const CTA: Record<string, string> = {
-  MATCHED: '🚗 Confirmar que voy en camino',
-  CONFIRMED: '📍 Llegué al domicilio',
-  IN_PROGRESS: '✅ Trabajo finalizado',
+  ASSIGNED:    '🚗 Salir en camino',
+  EN_ROUTE:    '📍 Llegué al domicilio',
+  IN_PROGRESS: '📸 Finalizar y subir foto del trabajo',
 }
 
 type TabId = 'info' | 'map' | 'chat'
@@ -79,11 +81,11 @@ export function JobDetailPage() {
 
   // GPS tracking — active when CONFIRMED or IN_PROGRESS
   useEffect(() => {
-    if (!job || !['CONFIRMED', 'IN_PROGRESS'].includes(job.status)) return
+    if (!job || !['EN_ROUTE', 'IN_PROGRESS'].includes(job.status)) return
     if (!('geolocation' in navigator)) return
 
     // Start elapsed timer for IN_PROGRESS
-    if (job.status === 'IN_PROGRESS' && !timerRef.current) {
+    if (['IN_PROGRESS', 'EN_ROUTE'].includes(job.status) && !timerRef.current) {
       timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000)
     }
 
@@ -115,12 +117,49 @@ export function JobDetailPage() {
     }
   }, [job?.status, requestId, user?.id])
 
+  // ── Completion photo state ────────────────────────────────────────────────
+  const [showPhotoModal, setShowPhotoModal] = useState(false)
+  const [completionPhotoB64, setCompletionPhotoB64] = useState<string | null>(null)
+  const [completionPreview, setCompletionPreview] = useState<string | null>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+
+  const handlePhotoFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      setCompletionPhotoB64(reader.result as string)
+      setCompletionPreview(URL.createObjectURL(file))
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const submitCompletion = async () => {
+    if (!job || !completionPhotoB64) return
+    setUpdating(true)
+    try {
+      const updated = await workerRequestsService.updateStatus(
+        job.id,
+        'FINISHED_PENDING_APPROVAL',
+        completionPhotoB64,
+      )
+      setJob(updated)
+      setShowPhotoModal(false)
+    } finally {
+      setUpdating(false)
+    }
+  }
+
   const advanceStatus = useCallback(async () => {
     if (!job) return
     const next: Record<string, string> = {
-      MATCHED: 'CONFIRMED',
-      CONFIRMED: 'IN_PROGRESS',
-      IN_PROGRESS: 'COMPLETED',
+      ASSIGNED:    'EN_ROUTE',
+      EN_ROUTE:    'IN_PROGRESS',
+      // IN_PROGRESS requires photo — handled by photo modal below
+    }
+    if (job.status === 'IN_PROGRESS') {
+      setShowPhotoModal(true)
+      return
     }
     const newStatus = next[job.status]
     if (!newStatus) return
@@ -129,13 +168,10 @@ export function JobDetailPage() {
     try {
       const updated = await workerRequestsService.updateStatus(job.id, newStatus)
       setJob(updated)
-      if (newStatus === 'COMPLETED') {
-        setTimeout(() => navigate('/dashboard'), 2000)
-      }
     } finally {
       setUpdating(false)
     }
-  }, [job, navigate])
+  }, [job])
 
   const openNavigation = () => {
     if (!job) return
@@ -160,8 +196,8 @@ export function JobDetailPage() {
   }
 
   const currentStep = STATUS_STEPS.indexOf(job.status)
-  const isCompleted = job.status === 'COMPLETED'
-  const showMap = (workerPos && ['CONFIRMED', 'IN_PROGRESS'].includes(job.status))
+  const isCompleted = job.status === 'COMPLETED' || job.status === 'FINISHED_PENDING_APPROVAL'
+  const showMap = (workerPos && ['EN_ROUTE', 'IN_PROGRESS'].includes(job.status))
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'info', label: 'Info' },
@@ -184,6 +220,11 @@ export function JobDetailPage() {
           {job.status === 'IN_PROGRESS' && (
             <div className="bg-secondary text-white text-sm font-bold px-3 py-1 rounded-full">
               ⏱ {formatElapsed(elapsed)}
+            </div>
+          )}
+          {job.status === 'FINISHED_PENDING_APPROVAL' && (
+            <div className="bg-amber-100 text-amber-700 text-xs font-bold px-3 py-1 rounded-full">
+              Esperando cliente
             </div>
           )}
         </div>
@@ -338,6 +379,75 @@ export function JobDetailPage() {
               ? <><CheckCircle size={18} className="mr-2" />{CTA[job.status]}</>
               : <><PlayCircle size={18} className="mr-2" />{CTA[job.status]}</>}
           </Button>
+        </div>
+      )}
+
+      {/* "Trabajo finalizado" badge when waiting for client approval */}
+      {job.status === 'FINISHED_PENDING_APPROVAL' && (
+        <div className="fixed bottom-0 left-0 right-0 bg-amber-50 border-t border-amber-200 px-4 py-4">
+          <div className="text-center">
+            <p className="font-bold text-amber-800">⏳ Esperando aprobación del cliente</p>
+            <p className="text-xs text-amber-600 mt-1">
+              El cliente tiene 24 hs para liberar el pago. Si no responde, se libera automáticamente.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Completion photo modal */}
+      {showPhotoModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-3xl p-6 space-y-4">
+            <h3 className="text-lg font-bold text-gray-900 text-center">📸 Foto del trabajo terminado</h3>
+            <p className="text-sm text-gray-500 text-center">
+              Esta foto es obligatoria. El cliente la verá para aprobar el pago.
+            </p>
+
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={handlePhotoFile}
+            />
+
+            {completionPreview ? (
+              <div className="space-y-2">
+                <img src={completionPreview} alt="Foto del trabajo" className="w-full h-48 object-cover rounded-xl" />
+                <button
+                  className="w-full text-sm text-gray-500 underline"
+                  onClick={() => { setCompletionPhotoB64(null); setCompletionPreview(null) }}
+                >
+                  Sacar otra foto
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => photoInputRef.current?.click()}
+                className="w-full border-2 border-dashed border-gray-300 rounded-2xl py-10 flex flex-col items-center gap-2 text-gray-400"
+              >
+                <CheckCircle size={32} />
+                <span className="text-sm font-medium">Tocar para abrir la cámara</span>
+              </button>
+            )}
+
+            <Button
+              className="w-full"
+              size="lg"
+              loading={updating}
+              onClick={submitCompletion}
+            >
+              {completionPhotoB64 ? '✅ Confirmar finalización' : 'Primero sacá la foto'}
+            </Button>
+
+            <button
+              className="w-full text-sm text-gray-400 pb-2"
+              onClick={() => setShowPhotoModal(false)}
+            >
+              Cancelar
+            </button>
+          </div>
         </div>
       )}
     </div>

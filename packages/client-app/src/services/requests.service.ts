@@ -1,15 +1,17 @@
 import { api } from '@/lib/api'
-import type { ServiceType, ServiceCategory } from '@casapp/shared'
+import type { LotSize, EquipmentTier, ServiceCategory } from '@tuki/shared'
 
 export interface CreateRequestPayload {
   categoryId: string
-  type: ServiceType
   address: string
   latitude: number
   longitude: number
+  lotSize?: LotSize
+  lotAreaM2?: number
+  addons?: string[]
+  equipmentTier?: EquipmentTier
   description?: string
   scheduledAt?: string
-  estimatedDuration?: number
 }
 
 export const requestsService = {
@@ -23,8 +25,11 @@ export const requestsService = {
     return data.data
   },
 
-  updateStatus: async (id: string, status: string) => {
-    const { data } = await api.patch(`/requests/${id}/status`, { status })
+  updateStatus: async (id: string, status: string, reason?: string) => {
+    const { data } = await api.patch(`/requests/${id}/status`, {
+      status,
+      ...(reason ? { disputeReason: reason } : {}),
+    })
     return data.data
   },
 

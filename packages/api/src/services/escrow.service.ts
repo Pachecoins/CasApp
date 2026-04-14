@@ -268,6 +268,40 @@ export async function resolveDisputeForClient(params: {
   // await paymentsService.refund(tx.mpPaymentId)
 }
 
+// ─── AUTO-RELEASE (24h cron) ─────────────────────────────────────────────────
+
+const AUTO_RELEASE_HOURS = 24
+
+/**
+ * Finds all orders stuck in FINISHED_PENDING_APPROVAL for more than 24 hours
+ * and automatically releases the escrow to the worker.
+ * Designed to be called from a recurring cron job (every hour).
+ */
+export async function autoReleaseOverdueOrders(): Promise<void> {
+  const cutoff = new Date(Date.now() - AUTO_RELEASE_HOURS * 60 * 60 * 1000)
+
+  const overdueOrders = await prisma.serviceRequest.findMany({
+    where: {
+      status: 'FINISHED_PENDING_APPROVAL',
+      finishedAt: { lte: cutoff },
+    },
+    select: { id: true },
+  })
+
+  if (overdueOrders.length === 0) return
+
+  console.log(`[Escrow Auto-Release] Processing ${overdueOrders.length} overdue order(s)`)
+
+  for (const order of overdueOrders) {
+    try {
+      await releaseToWorker(order.id)
+      console.log(`[Escrow Auto-Release] Released: ${order.id}`)
+    } catch (err) {
+      console.error(`[Escrow Auto-Release] Failed for ${order.id}:`, err)
+    }
+  }
+}
+
 // ─── WALLET WITHDRAWAL ───────────────────────────────────────────────────────
 
 /**

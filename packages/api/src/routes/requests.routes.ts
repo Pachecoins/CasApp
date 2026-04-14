@@ -59,19 +59,43 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
 // PATCH /api/requests/:id/status
 router.patch('/:id/status', authenticate, async (req: AuthRequest, res) => {
   const schema = z.object({
-    status: z.enum(['CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'DISPUTED']),
+    status: z.enum([
+      'EN_ROUTE', 'IN_PROGRESS', 'FINISHED_PENDING_APPROVAL',
+      'COMPLETED', 'CANCELLED', 'DISPUTED',
+    ]),
+    // Worker sends base64 photo when transitioning to FINISHED_PENDING_APPROVAL
+    completionPhotoBase64: z.string().optional(),
   })
   const result = schema.safeParse(req.body)
   if (!result.success) {
-    return sendError(res, 'status inválido', 422)
+    return sendError(res, 'status inválido', 422, result.error.flatten())
   }
 
   try {
+    // Upload completion photo to Cloudinary if provided
+    let completionPhotoUrl: string | undefined
+    if (result.data.status === 'FINISHED_PENDING_APPROVAL' && result.data.completionPhotoBase64) {
+      const { uploadDocument } = await import('../services/kyc.service.js')
+      const { prisma } = await import('../config/prisma.js')
+      const workerProfile = await prisma.workerProfile.findUnique({
+        where: { userId: req.user!.userId },
+        select: { id: true },
+      })
+      if (workerProfile) {
+        completionPhotoUrl = await uploadDocument(
+          result.data.completionPhotoBase64,
+          workerProfile.id,
+          'completion_photo' as never,
+        )
+      }
+    }
+
     const updated = await requestsService.updateRequestStatus(
       req.params.id,
       req.user!.userId,
       result.data.status,
       req.user!.role,
+      { completionPhotoUrl },
     )
     return sendSuccess(res, updated)
   } catch (err) {

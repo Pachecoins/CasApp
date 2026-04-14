@@ -22,6 +22,7 @@ import profilesRoutes from './routes/profiles.routes.js'
 import notificationsRoutes from './routes/notifications.routes.js'
 import adminRoutes from './routes/admin.routes.js'
 import { generateScheduledRequests } from './services/subscriptions.service.js'
+import { autoReleaseOverdueOrders } from './services/escrow.service.js'
 import cron from 'node-cron'
 
 const app = express()
@@ -136,6 +137,15 @@ httpServer.listen(env.PORT, () => {
     )
   })
   console.log('[Cron] Subscription scheduler started (every 30 min)')
+
+  // ─── Cron: auto-release escrow after 24h (2c) ─────────────────────────────
+  // Runs every hour; releases orders in FINISHED_PENDING_APPROVAL older than 24h
+  cron.schedule('0 * * * *', () => {
+    autoReleaseOverdueOrders().catch((err) =>
+      console.error('[Cron] Escrow auto-release failed:', err),
+    )
+  })
+  console.log('[Cron] Escrow auto-release started (every hour)')
 })
 
 export default app

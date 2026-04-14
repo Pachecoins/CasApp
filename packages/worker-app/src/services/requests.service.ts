@@ -16,8 +16,11 @@ export const workerRequestsService = {
     return data.data
   },
 
-  updateStatus: async (requestId: string, status: string) => {
-    const { data } = await api.patch(`/requests/${requestId}/status`, { status })
+  updateStatus: async (requestId: string, status: string, completionPhotoBase64?: string) => {
+    const { data } = await api.patch(`/requests/${requestId}/status`, {
+      status,
+      ...(completionPhotoBase64 ? { completionPhotoBase64 } : {}),
+    })
     return data.data
   },
 

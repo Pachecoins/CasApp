@@ -1,26 +1,32 @@
 import { prisma } from '../config/prisma.js'
-import { calculatePrice, isNighttimeRequest } from '@casapp/shared'
-import type { ServiceType, SubscriptionFrequency } from '@casapp/shared'
+import { calculateQuote } from '@tuki/shared/utils/price.js'
 import { io } from '../index.js'
 import {
   notifyRequestMatched,
   notifyIncomingRequest,
   notifyRequestCompleted,
 } from './notifications.service.js'
+import {
+  buildNotificationQueue,
+  validateWorkerEligibility,
+} from './matching.service.js'
 
-const ON_DEMAND_EXPIRY_MS = 5 * 60 * 1000 // 5 min antes de ampliar radio
-const ON_DEMAND_NOTIFY_COUNT = 3 // notificar a los 3 más cercanos
+const ACCEPT_EXPIRY_MS = 30_000  // 30 s per worker before moving to next
+const EXPAND_AFTER_MS  = 5 * 60_000 // expand radius after 5 min with no accept
 
 interface CreateRequestParams {
   clientUserId: string
   categoryId: string
-  type: ServiceType
   address: string
   latitude: number
   longitude: number
+  isGatedCommunity?: boolean
+  lotSize?: 'SMALL' | 'MEDIUM' | 'LARGE'
+  lotAreaM2?: number
+  addons?: string[]
+  equipmentTier?: 'STANDARD' | 'PREMIUM'
   description?: string
   scheduledAt?: string
-  estimatedDuration?: number
 }
 
 export async function createRequest(params: CreateRequestParams) {
@@ -31,33 +37,53 @@ export async function createRequest(params: CreateRequestParams) {
 
   const category = await prisma.serviceCategory.findUnique({
     where: { id: params.categoryId },
+    select: {
+      id: true,
+      name: true,
+      basePriceStandard: true,
+      basePricePremium: true,
+      pricePerM2Standard: true,
+      pricePerM2Premium: true,
+      addonDefinitions: true,
+    },
   })
   if (!category) throw new Error('Categoría no encontrada')
 
-  // Calcular precio estimado
-  const isNight = isNighttimeRequest()
-  const distKm = 0 // se recalcula cuando se asigna trabajador
-  const priceBreakdown = calculatePrice({
-    basePrice: params.type === 'SCHEDULED' ? category.scheduledPrice : category.basePrice,
-    type: params.type,
-    distanceKm: distKm,
-    isNighttime: isNight,
-  })
+  const tier = params.equipmentTier ?? 'STANDARD'
+  const lotSize = params.lotSize ?? 'SMALL'
+
+  const quote = calculateQuote(
+    {
+      basePriceStandard: category.basePriceStandard,
+      basePricePremium: category.basePricePremium,
+      pricePerM2Standard: category.pricePerM2Standard,
+      pricePerM2Premium: category.pricePerM2Premium,
+      addonDefinitions: category.addonDefinitions as never,
+    },
+    {
+      lotSize,
+      lotAreaM2: params.lotAreaM2,
+      selectedAddons: params.addons ?? [],
+      equipmentTier: tier,
+    },
+  )
 
   const request = await prisma.serviceRequest.create({
     data: {
       clientId: clientProfile.id,
       categoryId: params.categoryId,
-      type: params.type,
-      // ON_DEMAND and SCHEDULED go to PENDING_PAYMENT; matching starts after payment
-      status: params.type === 'SUBSCRIPTION' ? 'PENDING' : 'PENDING_PAYMENT',
+      status: 'SEARCHING',
       address: params.address,
       latitude: params.latitude,
       longitude: params.longitude,
+      lotSize,
+      lotAreaM2: params.lotAreaM2,
+      addons: params.addons ?? [],
+      quotedPrice: quote.total,
+      platformFeePercent: 15,
       description: params.description,
       scheduledAt: params.scheduledAt ? new Date(params.scheduledAt) : undefined,
-      estimatedDuration: params.estimatedDuration,
-      finalPrice: priceBreakdown.total,
+      estimatedDuration: quote.estimatedDurationMin,
     },
     include: {
       category: true,
@@ -67,45 +93,49 @@ export async function createRequest(params: CreateRequestParams) {
     },
   })
 
-  return request
+  return { request, quote }
 }
 
-// Exported so payments.service can trigger matching after payment approval
-export async function notifyNearbyWorkersExport(
+// Called by payments.service after payment is captured in escrow
+export async function startMatchingAfterPayment(
   requestId: string,
-  lat: number,
-  lng: number,
-  categoryId: string,
-  radiusKm = 15,
+  isGatedCommunity = false,
 ) {
-  return notifyNearbyWorkers(requestId, lat, lng, categoryId, radiusKm)
-}
-
-async function notifyNearbyWorkers(
-  requestId: string,
-  lat: number,
-  lng: number,
-  categoryId: string,
-  radiusKm = 15,
-) {
-  const latDelta = radiusKm / 111
-  const lngDelta = radiusKm / (111 * Math.cos((lat * Math.PI) / 180))
-
-  const workers = await prisma.workerProfile.findMany({
-    where: {
-      isAvailable: true,
-      currentLatitude: { gte: lat - latDelta, lte: lat + latDelta },
-      currentLongitude: { gte: lng - lngDelta, lte: lng + lngDelta },
-      workerServices: { some: { categoryId, isActive: true } },
+  const request = await prisma.serviceRequest.findUnique({
+    where: { id: requestId },
+    select: {
+      id: true,
+      latitude: true,
+      longitude: true,
+      categoryId: true,
+      status: true,
     },
-    include: {
-      user: { select: { id: true } },
-    },
-    orderBy: [
-      { currentLatitude: 'asc' }, // approximate sort; precise handled in app layer
-    ],
-    take: ON_DEMAND_NOTIFY_COUNT,
   })
+  if (!request || request.status !== 'SEARCHING') return
+
+  await broadcastToWorkers(
+    request.id,
+    request.latitude,
+    request.longitude,
+    request.categoryId,
+    isGatedCommunity,
+  )
+}
+
+// Keep old export name for backwards compat with payments.service.ts
+export const notifyNearbyWorkersExport = startMatchingAfterPayment
+
+async function broadcastToWorkers(
+  requestId: string,
+  lat: number,
+  lng: number,
+  categoryId: string,
+  isGatedCommunity: boolean,
+  radiusKm = 15,
+) {
+  const workerUserIds = await buildNotificationQueue(
+    { categoryId, latitude: lat, longitude: lng, isGatedCommunity, maxRadiusKm: radiusKm },
+  )
 
   const request = await prisma.serviceRequest.findUnique({
     where: { id: requestId },
@@ -116,72 +146,70 @@ async function notifyNearbyWorkers(
       },
     },
   })
-
   if (!request) return
 
-  const expiresAt = new Date(Date.now() + ON_DEMAND_EXPIRY_MS).toISOString()
+  const expiresAt = new Date(Date.now() + ACCEPT_EXPIRY_MS).toISOString()
 
-  // Emitir evento Socket.io + push notification a cada trabajador disponible
-  for (const worker of workers) {
-    io.to(`worker:${worker.userId}`).emit('worker:incoming-request', {
-      request,
-      expiresAt,
-    })
-    notifyIncomingRequest(
-      worker.userId,
-      request.category.name,
-      0, // distance calculated client-side
-    ).catch(() => {})
+  for (const userId of workerUserIds) {
+    io.to(`worker:${userId}`).emit('worker:incoming-request', { request, expiresAt })
+    notifyIncomingRequest(userId, request.category.name, 0).catch(() => {})
   }
 
-  // Programar ampliación de radio si nadie acepta en 5 min
+  // Expand radius if nobody accepts within 5 min
   setTimeout(async () => {
-    const current = await prisma.serviceRequest.findUnique({ where: { id: requestId } })
-    if (current?.status === 'PENDING') {
-      await notifyNearbyWorkers(requestId, lat, lng, categoryId, radiusKm + 10)
+    const current = await prisma.serviceRequest.findUnique({
+      where: { id: requestId },
+      select: { status: true },
+    })
+    if (current?.status === 'SEARCHING') {
+      await broadcastToWorkers(requestId, lat, lng, categoryId, isGatedCommunity, radiusKm + 10)
     }
-  }, ON_DEMAND_EXPIRY_MS)
+  }, EXPAND_AFTER_MS)
 }
 
 export async function acceptRequest(requestId: string, workerUserId: string) {
   const workerProfile = await prisma.workerProfile.findUnique({
     where: { userId: workerUserId },
+    select: {
+      id: true,
+      currentLatitude: true,
+      currentLongitude: true,
+      insuranceVerified: true,
+    },
   })
   if (!workerProfile) throw new Error('Perfil de trabajador no encontrado')
 
   const request = await prisma.serviceRequest.findUnique({
     where: { id: requestId },
-    include: { category: true },
+    include: { category: true, client: { include: { user: true } } },
   })
   if (!request) throw new Error('Pedido no encontrado')
-  if (request.status !== 'PENDING') throw new Error('Este pedido ya no está disponible')
+  if (request.status !== 'SEARCHING') throw new Error('Este pedido ya no está disponible')
 
-  // Calcular precio final con distancia real
-  const distKm = workerProfile.currentLatitude
-    ? Math.sqrt(
-        Math.pow(request.latitude - workerProfile.currentLatitude, 2) +
-          Math.pow(request.longitude - (workerProfile.currentLongitude ?? 0), 2),
-      ) * 111
-    : 0
-
-  const isNight = isNighttimeRequest()
-  const basePrice =
-    request.type === 'SCHEDULED' ? request.category.scheduledPrice : request.category.basePrice
-  const priceBreakdown = calculatePrice({
-    basePrice,
-    type: request.type as ServiceType,
-    frequency: undefined,
-    distanceKm: distKm,
-    isNighttime: isNight,
+  // Re-validate eligibility at accept time (gated community + radius)
+  // We don't have isGatedCommunity on the request yet; derive from client addresses
+  const defaultAddress = await prisma.clientAddress.findFirst({
+    where: { clientId: request.clientId, isDefault: true },
   })
+  const isGatedCommunity = defaultAddress?.isGatedCommunity ?? false
 
-  const updated = await prisma.serviceRequest.update({
+  const eligibility = await validateWorkerEligibility(workerProfile.id, {
+    categoryId: request.categoryId,
+    latitude: request.latitude,
+    longitude: request.longitude,
+    isGatedCommunity,
+  })
+  if (!eligibility.eligible) throw new Error(eligibility.reason)
+
+  // Atomic update — only one worker wins the race
+  const updated = await prisma.serviceRequest.updateMany({
+    where: { id: requestId, status: 'SEARCHING' },
+    data: { workerId: workerProfile.id, status: 'ASSIGNED' },
+  })
+  if (updated.count === 0) throw new Error('Este pedido ya fue tomado por otro trabajador')
+
+  const full = await prisma.serviceRequest.findUnique({
     where: { id: requestId },
-    data: {
-      workerId: workerProfile.id,
-      status: 'MATCHED',
-      finalPrice: priceBreakdown.total,
-    },
     include: {
       worker: { include: { user: { select: { firstName: true, lastName: true, avatarUrl: true, phone: true } } } },
       client: { include: { user: { select: { firstName: true, lastName: true } } } },
@@ -189,35 +217,48 @@ export async function acceptRequest(requestId: string, workerUserId: string) {
     },
   })
 
-  // Notificar al cliente via Socket.io + push
-  io.to(`client:${updated.client.userId}`).emit('request:status-change', {
+  // Notify client in real-time
+  io.to(`client:${full!.client.userId}`).emit('request:status-change', {
     requestId,
-    status: 'MATCHED',
-    worker: updated.worker,
-    updatedAt: updated.updatedAt.toISOString(),
+    status: 'ASSIGNED',
+    worker: full!.worker,
+    updatedAt: full!.updatedAt.toISOString(),
   })
+  notifyRequestMatched(
+    full!.client.userId,
+    `${full!.worker!.user.firstName} ${full!.worker!.user.lastName}`,
+    requestId,
+  ).catch(() => {})
 
-  const workerName = `${updated.worker!.user.firstName} ${updated.worker!.user.lastName}`
-  notifyRequestMatched(updated.client.userId, workerName, requestId).catch(() => {})
-
-  return updated
+  return full
 }
 
 export async function rejectRequest(requestId: string, workerUserId: string) {
-  // En MVP simplemente se ignora; en v2 se llevaría registro de rechazos
-  const workerProfile = await prisma.workerProfile.findUnique({
-    where: { userId: workerUserId },
-  })
+  const workerProfile = await prisma.workerProfile.findUnique({ where: { userId: workerUserId } })
   if (!workerProfile) throw new Error('Perfil no encontrado')
-
-  // Notificar al siguiente trabajador disponible (expansión simple)
-  const request = await prisma.serviceRequest.findUnique({ where: { id: requestId } })
-  if (request?.status === 'PENDING') {
-    // Re-emitir a otros trabajadores cercanos (se maneja en notifyNearbyWorkers timeout)
+  const request = await prisma.serviceRequest.findUnique({ where: { id: requestId }, select: { status: true } })
+  if (request?.status === 'SEARCHING') {
     io.to(`request:${requestId}`).emit('request:worker-rejected', { workerId: workerProfile.id })
   }
-
   return { ok: true }
+}
+
+// ─── STATE MACHINE ────────────────────────────────────────────────────────────
+
+const WORKER_TRANSITIONS: Record<string, string[]> = {
+  ASSIGNED:                  ['EN_ROUTE', 'CANCELLED'],
+  EN_ROUTE:                  ['IN_PROGRESS'],
+  IN_PROGRESS:               ['FINISHED_PENDING_APPROVAL'],
+}
+
+const CLIENT_TRANSITIONS: Record<string, string[]> = {
+  SEARCHING:                 ['CANCELLED'],
+  ASSIGNED:                  ['CANCELLED'],
+  FINISHED_PENDING_APPROVAL: ['COMPLETED', 'DISPUTED'],
+}
+
+const ADMIN_EXTRA: Record<string, string[]> = {
+  DISPUTED: ['COMPLETED', 'CANCELLED'],
 }
 
 export async function updateRequestStatus(
@@ -225,75 +266,66 @@ export async function updateRequestStatus(
   userId: string,
   newStatus: string,
   role: string,
+  extras?: { completionPhotoUrl?: string },
 ) {
   const request = await prisma.serviceRequest.findUnique({
     where: { id: requestId },
-    include: {
-      client: true,
-      worker: true,
-    },
+    include: { client: true, worker: true },
   })
   if (!request) throw new Error('Pedido no encontrado')
 
-  // Validar permisos
   const clientProfile = await prisma.clientProfile.findUnique({ where: { userId } })
   const workerProfile = await prisma.workerProfile.findUnique({ where: { userId } })
-
+  const isAdmin = role === 'ADMIN'
   const isOwnerClient = clientProfile?.id === request.clientId
   const isOwnerWorker = workerProfile?.id === request.workerId
-  const isAdmin = role === 'ADMIN'
 
   if (!isOwnerClient && !isOwnerWorker && !isAdmin) {
     throw new Error('Sin permisos para modificar este pedido')
   }
 
-  // Validar transiciones de estado
-  const allowedTransitions: Record<string, string[]> = {
-    MATCHED: ['CONFIRMED', 'CANCELLED'],
-    CONFIRMED: ['IN_PROGRESS', 'CANCELLED'],
-    IN_PROGRESS: ['COMPLETED', 'DISPUTED'],
-    PENDING: ['CANCELLED'],
-    PENDING_PAYMENT: ['CANCELLED'],
-  }
+  // Determine allowed transitions based on who's calling
+  let allowed: string[] = []
+  if (isOwnerWorker) allowed = WORKER_TRANSITIONS[request.status] ?? []
+  if (isOwnerClient) allowed = [...allowed, ...(CLIENT_TRANSITIONS[request.status] ?? [])]
+  if (isAdmin)       allowed = [...allowed, ...(ADMIN_EXTRA[request.status] ?? [])]
 
-  // Cancellation policy: ON_DEMAND free within 5 min; charge fee after
-  if (newStatus === 'CANCELLED' && request.type === 'ON_DEMAND') {
-    const ageMs = Date.now() - request.createdAt.getTime()
-    const freeCancellationWindowMs = 5 * 60 * 1000
-    if (ageMs > freeCancellationWindowMs && request.status === 'CONFIRMED') {
-      // Late cancellation — mark paymentStatus as reflecting penalty
-      await prisma.serviceRequest.update({
-        where: { id: requestId },
-        data: { paymentStatus: 'FAILED' }, // signal to trigger refund flow
-      })
-    }
-  }
-
-  const allowed = allowedTransitions[request.status] ?? []
   if (!allowed.includes(newStatus)) {
     throw new Error(`No se puede pasar de ${request.status} a ${newStatus}`)
   }
 
+  // Worker must provide completion photo when finishing
+  if (newStatus === 'FINISHED_PENDING_APPROVAL' && !extras?.completionPhotoUrl) {
+    throw new Error('Se requiere la foto del trabajo terminado para finalizar')
+  }
+
+  const updateData: Record<string, unknown> = { status: newStatus }
+  if (newStatus === 'FINISHED_PENDING_APPROVAL') {
+    updateData.completionPhotoUrl = extras!.completionPhotoUrl
+    updateData.finishedAt = new Date()
+  }
+
   const updated = await prisma.serviceRequest.update({
     where: { id: requestId },
-    data: { status: newStatus as never },
+    data: updateData as never,
     include: { category: true, worker: true, client: true },
   })
 
-  // Emitir cambio de estado en tiempo real
   io.to(`request:${requestId}`).emit('request:status-change', {
     requestId,
     status: newStatus,
     updatedAt: updated.updatedAt.toISOString(),
+    completionPhotoUrl: updated.completionPhotoUrl,
   })
 
-  // Push notification cuando el servicio se completa
   if (newStatus === 'COMPLETED') {
     notifyRequestCompleted(updated.client.userId, requestId).catch(() => {})
   }
 
   return updated
 }
+
+// ─── QUERIES ─────────────────────────────────────────────────────────────────
 
 export async function getClientRequests(clientUserId: string) {
   const clientProfile = await prisma.clientProfile.findUnique({ where: { userId: clientUserId } })
@@ -344,19 +376,13 @@ export async function getRequestById(requestId: string, userId: string, role: st
       transactions: true,
     },
   })
-
   if (!request) throw new Error('Pedido no encontrado')
 
-  // Verificar acceso
   const clientProfile = await prisma.clientProfile.findUnique({ where: { userId } })
   const workerProfile = await prisma.workerProfile.findUnique({ where: { userId } })
   const isAdmin = role === 'ADMIN'
 
-  if (
-    !isAdmin &&
-    clientProfile?.id !== request.clientId &&
-    workerProfile?.id !== request.workerId
-  ) {
+  if (!isAdmin && clientProfile?.id !== request.clientId && workerProfile?.id !== request.workerId) {
     throw new Error('Sin acceso a este pedido')
   }
 

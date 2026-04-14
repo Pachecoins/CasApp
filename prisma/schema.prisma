@@ -12,6 +12,14 @@ datasource db {
 
 // ─── ENUMS ───────────────────────────────────────────────────────────────────
 
+// KYC verification lifecycle for worker identity + insurance documents
+enum KycStatus {
+  PENDING    // not yet submitted
+  SUBMITTED  // docs uploaded, awaiting external review
+  APPROVED   // external KYC provider (or admin) approved
+  REJECTED   // rejected — worker must re-submit
+}
+
 enum Role {
   CLIENT
   WORKER
@@ -163,11 +171,13 @@ model WorkerProfile {
   radiusKm         Float         @default(10)
 
   // Onboarding / integrity filter
-  isVerified         Boolean @default(false)
-  identityVerified   Boolean @default(false)
-  dniFrontUrl        String? // photo of DNI front
-  dniBackUrl         String? // photo of DNI back
-  selfieBiometricUrl String? // selfie for biometric check
+  isVerified         Boolean   @default(false)
+  identityVerified   Boolean   @default(false)
+  dniFrontUrl        String?   // photo of DNI front
+  dniBackUrl         String?   // photo of DNI back
+  selfieBiometricUrl String?   // selfie for biometric check
+  kycStatus          KycStatus @default(PENDING)
+  kycProviderRef     String?   // external KYC provider reference ID
 
   // ART / personal-accident insurance — required for gated-community jobs
   insurancePolicyUrl  String?
@@ -175,8 +185,14 @@ model WorkerProfile {
   insuranceExpiresAt  DateTime?
 
   // Bank account: must match DNI (validated before first payout)
-  bankCvu            String? // CBU/CVU (stored encrypted in production)
-  bankAccountVerified Boolean @default(false)
+  bankCvu             String?  // CBU/CVU (stored encrypted in production)
+  bankAccountVerified Boolean  @default(false)
+
+  // MercadoPago Marketplace — worker's linked MP account for automatic splits
+  mpUserId       String? // worker's MP user ID (from OAuth)
+  mpAccessToken  String? // worker's MP access token (encrypted in production)
+  mpRefreshToken String?
+  mpTokenExpiresAt DateTime?
 
   // Wallet balance (in ARS cents to avoid float rounding)
   walletBalanceCents Int @default(0)
@@ -298,6 +314,10 @@ model ServiceRequest {
 
   description       String?
   estimatedDuration Int?    // in minutes
+
+  // Timestamps for auto-release logic
+  // Set when worker transitions to FINISHED_PENDING_APPROVAL
+  finishedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
