@@ -10,11 +10,10 @@ export function RequestConfirmedPage() {
   const navigate = useNavigate()
   const [request, setRequest] = useState<{
     id: string
-    type: string
     status: string
     address: string
     scheduledAt?: string
-    finalPrice?: number
+    quotedPrice?: number
     category: { name: string }
   } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -101,14 +100,14 @@ export function RequestConfirmedPage() {
             </div>
           )}
 
-          {request.finalPrice && (
+          {request.quotedPrice && (
             <div className="flex items-start gap-3">
               <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
                 <span className="text-sm">💰</span>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Precio estimado</p>
-                <p className="font-bold text-gray-800 text-lg">{formatPrice(request.finalPrice)}</p>
+                <p className="text-xs text-gray-500">Precio</p>
+                <p className="font-bold text-gray-800 text-lg">{formatPrice(request.quotedPrice)}</p>
               </div>
             </div>
           )}

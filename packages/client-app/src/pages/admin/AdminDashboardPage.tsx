@@ -20,7 +20,7 @@ interface Stats {
     id: string
     status: string
     createdAt: string
-    finalPrice?: number
+    quotedPrice?: number
     category: { name: string }
     client: { user: { firstName: string; lastName: string } }
     worker?: { user: { firstName: string; lastName: string } } | null
@@ -299,7 +299,7 @@ export function AdminDashboardPage() {
                       </p>
                     </div>
                     <div className="text-right text-xs text-gray-400 flex-shrink-0">
-                      {req.finalPrice ? <p className="font-medium text-gray-700">{formatPrice(req.finalPrice)}</p> : null}
+                      {req.quotedPrice ? <p className="font-medium text-gray-700">{formatPrice(req.quotedPrice)}</p> : null}
                       <p>{new Date(req.createdAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}</p>
                     </div>
                   </div>

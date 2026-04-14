@@ -19,7 +19,7 @@ interface Subscription {
   preferSameWorker: boolean
   cancelledAt: string | null
   startedAt: string
-  category: { name: string; slug: string; basePrice: number; scheduledPrice: number }
+  category: { name: string; slug: string }
   worker?: { user: { firstName: string; lastName: string; avatarUrl?: string; phone?: string } } | null
 }
 

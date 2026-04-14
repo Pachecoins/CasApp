@@ -13,12 +13,11 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 interface JobRequest {
   id: string
-  type: string
   status: string
   address: string
   latitude: number
   longitude: number
-  finalPrice?: number
+  quotedPrice?: number
   description?: string
   scheduledAt?: string
   category: { name: string }
@@ -309,15 +308,15 @@ export function JobDetailPage() {
               </div>
             )}
 
-            {job.finalPrice && (
+            {job.quotedPrice && (
               <div className="card flex items-center justify-between">
                 <div>
                   <p className="text-xs text-gray-500">Tu ganancia</p>
-                  <p className="text-xl font-bold text-primary">{formatPrice(job.finalPrice * 0.8)}</p>
+                  <p className="text-xl font-bold text-primary">{formatPrice(Math.round(job.quotedPrice / 1.15))}</p>
                 </div>
                 <div className="text-right text-sm text-gray-400">
-                  <p>Total: {formatPrice(job.finalPrice)}</p>
-                  <p>CasApp: {formatPrice(job.finalPrice * 0.2)}</p>
+                  <p>Total: {formatPrice(job.quotedPrice)}</p>
+                  <p>TUKI: {formatPrice(job.quotedPrice - Math.round(job.quotedPrice / 1.15))}</p>
                 </div>
               </div>
             )}
@@ -348,9 +347,7 @@ export function JobDetailPage() {
               <div className="flex flex-col items-center justify-center h-full py-16 text-center px-6">
                 <div className="text-4xl mb-3">📍</div>
                 <p className="font-medium text-gray-700 mb-1">
-                  {job.status === 'MATCHED'
-                    ? 'Confirmá que vas en camino para activar el mapa'
-                    : 'El mapa se activará cuando estés en camino'}
+                  El mapa se activará cuando estés en camino
                 </p>
                 <p className="text-sm text-gray-500">Se requiere permiso de ubicación</p>
               </div>

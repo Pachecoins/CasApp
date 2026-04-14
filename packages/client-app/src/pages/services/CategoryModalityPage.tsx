@@ -45,9 +45,8 @@ export function CategoryModalityPage() {
 
   const meta = CATEGORY_META[slug!] ?? { icon: '🏠', color: 'text-gray-700', bgColor: 'bg-gray-50' }
 
-  const onDemandPrice = category.basePrice * 1.35
-  const scheduledPrice = category.scheduledPrice
-  const subscriptionPrice = category.scheduledPrice * 0.75
+  const basePrice = category.basePriceStandard
+  const subscriptionPrice = Math.round(basePrice * 0.75)
 
   return (
     <div className="min-h-screen bg-background">
@@ -94,9 +93,9 @@ export function CategoryModalityPage() {
                 Un profesional llega en aproximadamente 30-60 min
               </p>
               <p className="text-base font-bold text-secondary">
-                desde {formatPrice(onDemandPrice)}
+                desde {formatPrice(basePrice)}
               </p>
-              <p className="text-xs text-gray-400">+35% por urgencia</p>
+              <p className="text-xs text-gray-400">Precio según tamaño del trabajo</p>
             </div>
             <ChevronRight size={18} className="text-gray-400 flex-shrink-0 mt-1" />
           </div>
@@ -120,7 +119,7 @@ export function CategoryModalityPage() {
                 Elegí el día y horario que más te convenga
               </p>
               <p className="text-base font-bold text-blue-600">
-                desde {formatPrice(scheduledPrice)}
+                desde {formatPrice(basePrice)}
               </p>
               <p className="text-xs text-gray-400">Precio estándar</p>
             </div>

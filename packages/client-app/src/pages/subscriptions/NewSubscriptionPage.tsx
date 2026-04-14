@@ -6,7 +6,6 @@ import { z } from 'zod'
 import { ArrowLeft, MapPin, RefreshCw, Calendar, Clock, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { categoriesService, subscriptionsService } from '@/services/requests.service'
-import { calculatePrice } from '@casapp/shared'
 import { formatPrice } from '@/lib/utils'
 import type { ServiceCategory } from '@casapp/shared'
 
@@ -68,14 +67,16 @@ export function NewSubscriptionPage() {
     categoriesService.getAll().then(setCategories).catch(console.error)
   }, [])
 
-  // Price preview
+  // Price preview — use basePriceStandard with frequency discount
   const selectedCategory = categories.find((c) => c.id === watchedValues.categoryId)
+  const FREQ_MULTIPLIERS: Record<string, number> = { WEEKLY: 0.75, BIWEEKLY: 0.80, MONTHLY: 0.85 }
   const pricePreview = selectedCategory
-    ? calculatePrice({
-        basePrice: selectedCategory.scheduledPrice,
-        type: 'SUBSCRIPTION',
-        frequency: watchedValues.frequency,
-      })
+    ? (() => {
+        const base = selectedCategory.basePriceStandard
+        const multiplier = FREQ_MULTIPLIERS[watchedValues.frequency] ?? 1
+        const discounted = Math.round(base * multiplier)
+        return { basePrice: base, total: discounted }
+      })()
     : null
 
   const onSubmit = async (data: FormData) => {
@@ -154,7 +155,7 @@ export function NewSubscriptionPage() {
                       }`}
                     >
                       <p className="font-semibold text-sm text-gray-900">{cat.name}</p>
-                      <p className="text-xs text-gray-400 mt-1">{formatPrice(cat.scheduledPrice)}/visita</p>
+                      <p className="text-xs text-gray-400 mt-1">{formatPrice(cat.basePriceStandard)}/visita</p>
                     </button>
                   ))}
                 </div>

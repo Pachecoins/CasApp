@@ -7,13 +7,13 @@ import { formatPrice } from '@/lib/utils'
 
 interface IncomingRequest {
   id: string
-  type: string
+  scheduledAt?: string
   description?: string
   address: string
   latitude: number
   longitude: number
-  finalPrice?: number
-  category: { name: string; basePrice: number }
+  quotedPrice?: number
+  category: { name: string }
   client: { user: { firstName: string; lastName: string } }
   distanceKm?: number
   estimatedArrivalMin?: number
@@ -75,17 +75,12 @@ export function IncomingRequestPage() {
 
   if (!request) return null
 
-  const typeLabels: Record<string, string> = {
-    ON_DEMAND: 'ON DEMAND',
-    SCHEDULED: 'PROGRAMADO',
-    SUBSCRIPTION: 'SUSCRIPCIÓN',
-  }
+  const isScheduled = Boolean(request.scheduledAt)
+  const typeLabel = isScheduled ? 'PROGRAMADO' : 'ON DEMAND'
+  const typeColor = isScheduled ? 'bg-blue-500 text-white' : 'bg-secondary text-white'
 
-  const typeColors: Record<string, string> = {
-    ON_DEMAND: 'bg-secondary text-white',
-    SCHEDULED: 'bg-blue-500 text-white',
-    SUBSCRIPTION: 'bg-primary text-white',
-  }
+  const workerEarnings = request.quotedPrice ? Math.round(request.quotedPrice / 1.15) : null
+  const tukiFee = request.quotedPrice && workerEarnings ? request.quotedPrice - workerEarnings : null
 
   const urgency = countdown <= 10
 
@@ -110,8 +105,8 @@ export function IncomingRequestPage() {
                 <h2 className="text-white font-heading font-bold text-lg">
                   {request.category.name}
                 </h2>
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${typeColors[request.type] ?? 'bg-gray-600 text-white'}`}>
-                  {typeLabels[request.type] ?? request.type}
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${typeColor}`}>
+                  {typeLabel}
                 </span>
               </div>
             </div>
@@ -174,14 +169,12 @@ export function IncomingRequestPage() {
               <div>
                 <p className="text-xs text-gray-500">Ganancia estimada</p>
                 <p className="text-lg font-bold text-gray-900">
-                  {request.finalPrice
-                    ? formatPrice(request.finalPrice * 0.8) // 80% para el trabajador
-                    : formatPrice(request.category.basePrice * 0.8)}
+                  {workerEarnings ? formatPrice(workerEarnings) : '—'}
                 </p>
               </div>
               <div className="ml-auto text-right text-xs text-gray-400">
-                <p>Total: {formatPrice(request.finalPrice ?? request.category.basePrice)}</p>
-                <p>CasApp: 20%</p>
+                {request.quotedPrice && <p>Total: {formatPrice(request.quotedPrice)}</p>}
+                {tukiFee && <p>TUKI: {formatPrice(tukiFee)}</p>}
               </div>
             </div>
 
