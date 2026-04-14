@@ -122,6 +122,106 @@ export async function buildNotificationQueue(
   return eligible.slice(0, limit).map((w) => w.userId)
 }
 
+// ─── AVAILABLE JOBS FEED ─────────────────────────────────────────────────────
+
+export interface AvailableJob {
+  requestId: string
+  categoryName: string
+  categorySlug: string
+  address: string
+  distanceKm: number
+  estimatedArrivalMin: number
+  lotSize: string | null
+  isGatedCommunity: boolean
+  workerEarningsEstimate: number // subtotal the worker receives
+  quotedPrice: number | null
+  description: string | null
+  createdAt: string
+}
+
+/**
+ * Return all SEARCHING orders that a worker is eligible to pick up,
+ * sorted by distance ascending. Used to populate the mission feed in the Pro app.
+ *
+ * Gated-community jobs are included but flagged with `isGatedCommunity: true`
+ * so the UI can show a ⚠️ badge. Workers without insurance will get a clear
+ * error if they attempt to accept one (via validateWorkerEligibility).
+ */
+export async function getAvailableJobsForWorker(workerUserId: string): Promise<AvailableJob[]> {
+  const worker = await prisma.workerProfile.findUnique({
+    where: { userId: workerUserId },
+    select: {
+      currentLatitude: true,
+      currentLongitude: true,
+      radiusKm: true,
+      workerServices: {
+        where: { isActive: true },
+        select: { categoryId: true },
+      },
+    },
+  })
+
+  if (!worker?.currentLatitude || !worker.currentLongitude) return []
+
+  const categoryIds = worker.workerServices.map((ws) => ws.categoryId)
+  if (categoryIds.length === 0) return []
+
+  const orders = await prisma.serviceRequest.findMany({
+    where: { status: 'SEARCHING', categoryId: { in: categoryIds } },
+    select: {
+      id: true,
+      address: true,
+      latitude: true,
+      longitude: true,
+      lotSize: true,
+      isGatedCommunity: true,
+      quotedPrice: true,
+      description: true,
+      createdAt: true,
+      category: { select: { name: true, slug: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+  })
+
+  const results: AvailableJob[] = []
+
+  for (const order of orders) {
+    const distanceKm = calculateDistance(
+      worker.currentLatitude,
+      worker.currentLongitude,
+      order.latitude,
+      order.longitude,
+    )
+
+    if (distanceKm > worker.radiusKm) continue
+
+    const estimatedArrivalMin = Math.ceil((distanceKm / 30) * 60) + 5
+    // Worker earnings ≈ quotedPrice / 1.15 (total includes 15% TUKI fee on top of subtotal)
+    const workerEarningsEstimate = order.quotedPrice
+      ? Math.round(order.quotedPrice / 1.15)
+      : 0
+
+    results.push({
+      requestId: order.id,
+      categoryName: order.category.name,
+      categorySlug: order.category.slug,
+      address: order.address,
+      distanceKm: Math.round(distanceKm * 10) / 10,
+      estimatedArrivalMin,
+      lotSize: order.lotSize,
+      isGatedCommunity: order.isGatedCommunity,
+      workerEarningsEstimate,
+      quotedPrice: order.quotedPrice,
+      description: order.description,
+      createdAt: order.createdAt.toISOString(),
+    })
+  }
+
+  results.sort((a, b) => a.distanceKm - b.distanceKm)
+  return results
+}
+
 /**
  * Validate that a specific worker is still eligible to claim a given order.
  * Used server-side when a worker presses "Aceptar" to prevent race conditions.

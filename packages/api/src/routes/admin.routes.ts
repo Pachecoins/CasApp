@@ -1,7 +1,9 @@
 import { Router } from 'express'
+import { z } from 'zod'
 import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.js'
 import { sendSuccess, sendError } from '../utils/response.js'
 import { prisma } from '../config/prisma.js'
+import * as kycService from '../services/kyc.service.js'
 
 const router = Router()
 
@@ -96,6 +98,67 @@ router.patch('/workers/:userId/verify', async (req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Error'
     return sendError(res, message, 400)
+  }
+})
+
+// ─── KYC REVIEW ──────────────────────────────────────────────────────────────
+
+// GET /api/admin/kyc/pending — workers with submitted identity docs or pending insurance
+router.get('/kyc/pending', async (_req, res) => {
+  try {
+    const workers = await prisma.workerProfile.findMany({
+      where: {
+        OR: [
+          { kycStatus: 'SUBMITTED' },
+          { insurancePolicyUrl: { not: null }, insuranceVerified: false },
+        ],
+      },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+      orderBy: { user: { createdAt: 'asc' } },
+    })
+    return sendSuccess(res, workers)
+  } catch (err) {
+    return sendError(res, err instanceof Error ? err.message : 'Error', 500)
+  }
+})
+
+// PATCH /api/admin/workers/:workerId/approve-kyc  (manual override)
+router.patch('/workers/:workerId/approve-kyc', async (req, res) => {
+  try {
+    await kycService.approveKycManually(req.params.workerId)
+    return sendSuccess(res, {}, 200, 'Identidad aprobada')
+  } catch (err) {
+    return sendError(res, err instanceof Error ? err.message : 'Error', 400)
+  }
+})
+
+// PATCH /api/admin/workers/:workerId/approve-insurance
+// Body: { expiresAt?: string (ISO date) }
+router.patch('/workers/:workerId/approve-insurance', async (req, res) => {
+  const schema = z.object({ expiresAt: z.string().optional() })
+  const result = schema.safeParse(req.body)
+  if (!result.success) return sendError(res, 'Payload inválido', 422)
+
+  try {
+    const expiresAt = result.data.expiresAt
+      ? new Date(result.data.expiresAt)
+      : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // default 1 year
+    await kycService.approveInsurance(req.params.workerId, expiresAt)
+    return sendSuccess(res, {}, 200, 'Seguro aprobado')
+  } catch (err) {
+    return sendError(res, err instanceof Error ? err.message : 'Error', 400)
+  }
+})
+
+// PATCH /api/admin/workers/:workerId/reject-insurance
+router.patch('/workers/:workerId/reject-insurance', async (req, res) => {
+  try {
+    await kycService.rejectInsurance(req.params.workerId)
+    return sendSuccess(res, {}, 200, 'Seguro rechazado')
+  } catch (err) {
+    return sendError(res, err instanceof Error ? err.message : 'Error', 400)
   }
 })
 

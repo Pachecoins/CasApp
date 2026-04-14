@@ -29,6 +29,24 @@ export const workerRequestsService = {
     return data.data
   },
 
+  getAvailableJobs: async () => {
+    const { data } = await api.get('/workers/me/available-jobs')
+    return data.data as Array<{
+      requestId: string
+      categoryName: string
+      categorySlug: string
+      address: string
+      distanceKm: number
+      estimatedArrivalMin: number
+      lotSize: string | null
+      isGatedCommunity: boolean
+      workerEarningsEstimate: number
+      quotedPrice: number | null
+      description: string | null
+      createdAt: string
+    }>
+  },
+
   updateAvailability: async (isAvailable: boolean) => {
     const { data } = await api.patch('/workers/me/availability', { isAvailable })
     return data.data

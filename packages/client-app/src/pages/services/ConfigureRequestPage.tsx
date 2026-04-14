@@ -1,16 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, MapPin, Camera, Clock, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Camera, ChevronDown, ChevronUp, Clock, MapPin, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { categoriesService, requestsService } from '@/services/requests.service'
-import { useAuthStore } from '@/store/auth.store'
 import { formatPrice } from '@/lib/utils'
-import { calculatePrice, isNighttimeRequest } from '@casapp/shared'
-import type { ServiceCategory, ServiceType, SubscriptionFrequency } from '@casapp/shared'
+import { calculateQuote } from '@tuki/shared'
+import type { EquipmentTier, LotSize, ServiceCategory, SubscriptionFrequency } from '@tuki/shared'
+
+// ─── Types ─────────────────────────────────────────────────────────────────────
+
+type ServiceType = 'ON_DEMAND' | 'SCHEDULED' | 'SUBSCRIPTION'
 
 const baseSchema = z.object({
   address: z.string().min(5, 'Ingresá una dirección válida'),
@@ -28,60 +31,71 @@ const subscriptionSchema = baseSchema.extend({
   preferSameWorker: z.boolean().default(true),
 })
 
-type OnDemandForm = z.infer<typeof baseSchema>
 type ScheduledForm = z.infer<typeof scheduledSchema>
-type SubscriptionForm = z.infer<typeof subscriptionSchema>
 
-const TYPE_LABELS: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  ON_DEMAND: { label: 'Ahora — On-demand', color: 'text-secondary', icon: <Clock size={16} /> },
-  SCHEDULED: { label: 'Programado', color: 'text-blue-600', icon: null },
-  SUBSCRIPTION: { label: 'Suscripción', color: 'text-primary', icon: <RefreshCw size={16} /> },
+// ─── Constants ──────────────────────────────────────────────────────────────────
+
+const TYPE_LABELS: Record<ServiceType, { label: string; color: string; icon: React.ReactNode }> = {
+  ON_DEMAND:    { label: 'Ahora — On-demand', color: 'text-secondary', icon: <Clock size={16} /> },
+  SCHEDULED:    { label: 'Programado',         color: 'text-blue-600', icon: null },
+  SUBSCRIPTION: { label: 'Suscripción',         color: 'text-primary',  icon: <RefreshCw size={16} /> },
 }
 
-const FREQUENCY_OPTIONS = [
-  { value: 'WEEKLY', label: 'Semanal', discount: '-25%' },
-  { value: 'BIWEEKLY', label: 'Quincenal', discount: '-20%' },
-  { value: 'MONTHLY', label: 'Mensual', discount: '-15%' },
+const LOT_SIZES: { value: LotSize; label: string; sublabel: string; emoji: string }[] = [
+  { value: 'SMALL',  label: 'Chico',   sublabel: 'hasta 100 m²',    emoji: '🌱' },
+  { value: 'MEDIUM', label: 'Mediano', sublabel: '100 – 300 m²',    emoji: '🌳' },
+  { value: 'LARGE',  label: 'Grande',  sublabel: 'más de 300 m²',   emoji: '🏡' },
 ]
 
-const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+const FREQUENCY_OPTIONS = [
+  { value: 'WEEKLY',   label: 'Semanal',   discount: '–25%' },
+  { value: 'BIWEEKLY', label: 'Quincenal', discount: '–20%' },
+  { value: 'MONTHLY',  label: 'Mensual',   discount: '–15%' },
+]
+
+const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 const TIME_SLOTS = ['08:00', '09:00', '10:00', '11:00', '12:00', '14:00', '15:00', '16:00', '17:00', '18:00']
+
+// ─── Component ─────────────────────────────────────────────────────────────────
 
 export function ConfigureRequestPage() {
   const { slug } = useParams<{ slug: string }>()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const user = useAuthStore((s) => s.user)
 
   const type = (searchParams.get('type') ?? 'ON_DEMAND') as ServiceType
+
+  // Remote data
   const [category, setCategory] = useState<ServiceCategory | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [frequency, setFrequency] = useState<SubscriptionFrequency>('WEEKLY')
-  const [selectedDay, setSelectedDay] = useState(1)
-  const [timeSlot, setTimeSlot] = useState('10:00')
+
+  // ── Quoter state ──────────────────────────────────────────────────────────────
+  const [lotSize, setLotSize]             = useState<LotSize>('SMALL')
+  const [lotAreaM2, setLotAreaM2]         = useState<string>('')
+  const [showM2Input, setShowM2Input]     = useState(false)
+  const [equipmentTier, setEquipmentTier] = useState<EquipmentTier>('STANDARD')
+  const [selectedAddons, setSelectedAddons] = useState<string[]>([])
+
+  // ── Subscription state ────────────────────────────────────────────────────────
+  const [frequency, setFrequency]           = useState<SubscriptionFrequency>('WEEKLY')
+  const [selectedDay, setSelectedDay]       = useState(1)
+  const [timeSlot, setTimeSlot]             = useState('10:00')
   const [preferSameWorker, setPreferSameWorker] = useState(true)
 
+  // ── Form ──────────────────────────────────────────────────────────────────────
   const schema =
-    type === 'SCHEDULED'
-      ? scheduledSchema
-      : type === 'SUBSCRIPTION'
-        ? subscriptionSchema
-        : baseSchema
+    type === 'SCHEDULED'    ? scheduledSchema    :
+    type === 'SUBSCRIPTION' ? subscriptionSchema :
+    baseSchema
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm({
+  const { register, handleSubmit, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
-    defaultValues: {
-      address: '',
-      description: '',
-      frequency: 'WEEKLY' as SubscriptionFrequency,
-      dayOfWeek: 1,
-      timeSlot: '10:00',
-      preferSameWorker: true,
-    },
+    defaultValues: { address: '', description: '', frequency: 'WEEKLY', dayOfWeek: 1, timeSlot: '10:00', preferSameWorker: true },
   })
 
+  // ── Data load ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!slug) return
     categoriesService
@@ -91,85 +105,92 @@ export function ConfigureRequestPage() {
       .finally(() => setLoading(false))
   }, [slug, navigate])
 
-  const basePrice = category
-    ? type === 'SCHEDULED'
-      ? category.scheduledPrice
-      : category.basePrice
-    : 0
+  // ── Real-time quote ───────────────────────────────────────────────────────────
+  const quote = useMemo(() => {
+    if (!category) return null
+    const parsedM2 = lotAreaM2 ? parseInt(lotAreaM2, 10) : undefined
+    return calculateQuote(category, {
+      lotSize,
+      lotAreaM2: parsedM2 && parsedM2 > 0 ? parsedM2 : undefined,
+      selectedAddons,
+      equipmentTier,
+    })
+  }, [category, lotSize, lotAreaM2, selectedAddons, equipmentTier])
 
-  const priceBreakdown = category
-    ? calculatePrice({
-        basePrice,
-        type,
-        frequency: type === 'SUBSCRIPTION' ? frequency : undefined,
-        isNighttime: type === 'ON_DEMAND' ? isNighttimeRequest() : false,
-      })
-    : null
+  // ── Helpers ───────────────────────────────────────────────────────────────────
+  const toggleAddon = (key: string) =>
+    setSelectedAddons((prev) => prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key])
 
-  const onSubmit = async (data: OnDemandForm | ScheduledForm | SubscriptionForm) => {
-    if (!category) return
+  const getGeo = async (): Promise<{ lat: number; lng: number }> => {
+    if ('geolocation' in navigator) {
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 3000 }),
+        )
+        return { lat: pos.coords.latitude, lng: pos.coords.longitude }
+      } catch { /* fall through */ }
+    }
+    return { lat: -34.6037, lng: -58.3816 }
+  }
+
+  // ── Submit ────────────────────────────────────────────────────────────────────
+  const onSubmit = async (data: Record<string, unknown>) => {
+    if (!category || !quote) return
     setError(null)
     setSubmitting(true)
 
     try {
-      // En MVP usamos ubicación por defecto de Buenos Aires si no hay geolocalización
-      // En producción se usaría la API de Maps para geocodificar la dirección
-      let lat = -34.6037
-      let lng = -58.3816
-
-      if ('geolocation' in navigator) {
-        try {
-          const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 3000 }),
-          )
-          lat = pos.coords.latitude
-          lng = pos.coords.longitude
-        } catch {
-          // usar coordenadas por defecto
-        }
-      }
+      const { lat, lng } = await getGeo()
+      const parsedM2 = lotAreaM2 ? parseInt(lotAreaM2, 10) : undefined
+      const cleanM2 = parsedM2 && parsedM2 > 0 ? parsedM2 : undefined
+      const cleanAddons = selectedAddons.length > 0 ? selectedAddons : undefined
 
       if (type === 'ON_DEMAND' || type === 'SCHEDULED') {
         const request = await requestsService.create({
-          categoryId: category.id,
-          type,
-          address: data.address,
-          latitude: lat,
-          longitude: lng,
-          description: data.description,
-          scheduledAt: (data as ScheduledForm).scheduledAt,
+          categoryId:    category.id,
+          type:          type === 'SCHEDULED' ? 'SCHEDULED' : 'ON_DEMAND',
+          address:       data.address as string,
+          latitude:      lat,
+          longitude:     lng,
+          lotSize,
+          lotAreaM2:     cleanM2,
+          addons:        cleanAddons,
+          equipmentTier,
+          description:   data.description as string | undefined,
+          scheduledAt:   (data as ScheduledForm).scheduledAt,
         })
-
-        // Go to checkout first — worker matching starts after payment confirmation
         navigate(`/requests/${request.id}/checkout`)
       } else {
-        // Subscription — navegamos a la página de confirmación con los datos
+        // SUBSCRIPTION — pass quoting params to the confirm page
         navigate('/subscriptions/new/confirm', {
           state: {
-            categoryId: category.id,
-            categoryName: category.name,
-            address: data.address,
-            latitude: lat,
-            longitude: lng,
-            description: data.description,
+            categoryId:      category.id,
+            categoryName:    category.name,
+            address:         data.address,
+            latitude:        lat,
+            longitude:       lng,
+            description:     data.description,
             frequency,
-            dayOfWeek: selectedDay,
+            dayOfWeek:       selectedDay,
             timeSlot,
             preferSameWorker,
-            pricePerVisit: priceBreakdown?.total ?? 0,
+            pricePerVisit:   quote.total,
+            lotSize,
+            lotAreaM2:       cleanM2,
+            equipmentTier,
+            addons:          selectedAddons,
           },
         })
       }
     } catch (err: unknown) {
       const apiErr = err as { response?: { data?: { error?: string } } }
-      setError(apiErr?.response?.data?.error || 'Error al crear el pedido')
+      setError(apiErr?.response?.data?.error ?? 'Error al crear el pedido')
     } finally {
       setSubmitting(false)
     }
   }
 
-  const meta = TYPE_LABELS[type]
-
+  // ── Loading state ─────────────────────────────────────────────────────────────
   if (loading || !category) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -178,11 +199,18 @@ export function ConfigureRequestPage() {
     )
   }
 
+  const meta = TYPE_LABELS[type]
+
+  // ─────────────────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
+
+      {/* ── Header ── */}
       <div className="bg-white px-4 pt-12 pb-4 flex items-center gap-3 border-b border-gray-100">
-        <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center">
+        <button
+          onClick={() => navigate(-1)}
+          className="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center"
+        >
           <ArrowLeft size={20} />
         </button>
         <div>
@@ -194,8 +222,142 @@ export function ConfigureRequestPage() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit as never)} className="px-4 pt-6 pb-32 space-y-5">
-        {/* Address */}
+      <form onSubmit={handleSubmit(onSubmit)} className="px-4 pt-6 pb-40 space-y-6">
+
+        {/* ── Lot size selector ── */}
+        <div>
+          <label className="block text-sm font-semibold text-gray-800 mb-2">
+            Tamaño del terreno
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {LOT_SIZES.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => { setLotSize(opt.value); setLotAreaM2(''); setShowM2Input(false) }}
+                className={`py-3 px-2 rounded-2xl border-2 text-center transition-all ${
+                  lotSize === opt.value
+                    ? 'border-primary bg-primary-50'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                <div className="text-xl mb-0.5">{opt.emoji}</div>
+                <div className={`font-bold text-sm ${lotSize === opt.value ? 'text-primary' : 'text-gray-800'}`}>
+                  {opt.label}
+                </div>
+                <div className="text-xs text-gray-500">{opt.sublabel}</div>
+              </button>
+            ))}
+          </div>
+
+          {/* Optional exact m² input */}
+          <button
+            type="button"
+            onClick={() => setShowM2Input((v) => !v)}
+            className="mt-2 flex items-center gap-1 text-xs text-gray-500 hover:text-primary transition-colors"
+          >
+            {showM2Input ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            Ingresar m² exactos
+          </button>
+          {showM2Input && (
+            <div className="mt-2">
+              <Input
+                label=""
+                placeholder="Ej: 150"
+                type="number"
+                min="1"
+                max="5000"
+                value={lotAreaM2}
+                onChange={(e) => {
+                  setLotAreaM2(e.target.value)
+                  const val = parseInt(e.target.value, 10)
+                  if (!isNaN(val)) {
+                    if (val <= 100) setLotSize('SMALL')
+                    else if (val <= 300) setLotSize('MEDIUM')
+                    else setLotSize('LARGE')
+                  }
+                }}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* ── Equipment tier ── */}
+        <div>
+          <label className="block text-sm font-semibold text-gray-800 mb-2">
+            Equipo del profesional
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {(['STANDARD', 'PREMIUM'] as EquipmentTier[]).map((tier) => (
+              <button
+                key={tier}
+                type="button"
+                onClick={() => setEquipmentTier(tier)}
+                className={`py-3 px-4 rounded-2xl border-2 text-left transition-all ${
+                  equipmentTier === tier
+                    ? 'border-primary bg-primary-50'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                <div className={`font-bold text-sm ${equipmentTier === tier ? 'text-primary' : 'text-gray-800'}`}>
+                  {tier === 'STANDARD' ? 'Estándar' : 'Premium'}
+                </div>
+                <div className="text-xs text-gray-500">
+                  {tier === 'STANDARD' ? 'Herramientas básicas' : 'Equipo profesional, más rápido'}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Addons ── */}
+        {category.addonDefinitions.length > 0 && (
+          <div>
+            <label className="block text-sm font-semibold text-gray-800 mb-2">
+              Extras <span className="text-gray-400 font-normal">(opcional)</span>
+            </label>
+            <div className="space-y-2">
+              {category.addonDefinitions.map((addon) => {
+                const checked = selectedAddons.includes(addon.key)
+                return (
+                  <button
+                    key={addon.key}
+                    type="button"
+                    onClick={() => toggleAddon(addon.key)}
+                    className={`w-full flex items-center justify-between p-3 rounded-2xl border-2 transition-all ${
+                      checked ? 'border-primary bg-primary-50' : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="text-left">
+                      <p className={`text-sm font-medium ${checked ? 'text-primary' : 'text-gray-800'}`}>
+                        {addon.label}
+                      </p>
+                      {addon.description && (
+                        <p className="text-xs text-gray-500">{addon.description}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                      <span className="text-xs text-gray-500">
+                        {addon.surchargeType === 'flat' ? `+${formatPrice(addon.value)}` : `+${addon.value}%`}
+                      </span>
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                        checked ? 'border-primary bg-primary text-white' : 'border-gray-300'
+                      }`}>
+                        {checked && (
+                          <svg viewBox="0 0 10 8" fill="none" className="w-3 h-2">
+                            <path d="M1 4l2.5 2.5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Address ── */}
         <div className="relative">
           <Input
             label="Dirección del servicio"
@@ -206,7 +368,7 @@ export function ConfigureRequestPage() {
           <MapPin size={16} className="absolute right-3 top-[38px] text-gray-400" />
         </div>
 
-        {/* Scheduled: date + time picker */}
+        {/* ── Scheduled date/time ── */}
         {type === 'SCHEDULED' && (
           <Input
             label="Fecha y hora"
@@ -217,7 +379,7 @@ export function ConfigureRequestPage() {
           />
         )}
 
-        {/* Subscription options */}
+        {/* ── Subscription options ── */}
         {type === 'SUBSCRIPTION' && (
           <>
             <div>
@@ -255,7 +417,7 @@ export function ConfigureRequestPage() {
                         : 'border-gray-200 text-gray-600'
                     }`}
                   >
-                    {day.slice(0, 3)}
+                    {day}
                   </button>
                 ))}
               </div>
@@ -288,36 +450,33 @@ export function ConfigureRequestPage() {
               </div>
               <button
                 type="button"
-                onClick={() => setPreferSameWorker(!preferSameWorker)}
+                onClick={() => setPreferSameWorker((v) => !v)}
                 className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
                   preferSameWorker ? 'bg-primary' : 'bg-gray-300'
                 }`}
               >
-                <span
-                  className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                    preferSameWorker ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
+                <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                  preferSameWorker ? 'translate-x-6' : 'translate-x-1'
+                }`} />
               </button>
             </div>
           </>
         )}
 
-        {/* Description */}
+        {/* ── Description ── */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">
-            Descripción del trabajo{' '}
-            <span className="text-gray-400 font-normal">(opcional)</span>
+            Descripción del trabajo <span className="text-gray-400 font-normal">(opcional)</span>
           </label>
           <textarea
             className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
             rows={3}
-            placeholder={`¿Qué necesitás exactamente? Ej: "Cortar el pasto del jardín delantero, aproximadamente 50m²"`}
+            placeholder={`¿Qué necesitás exactamente? Ej: "Cortar el pasto del jardín delantero, aprox. 50 m²"`}
             {...register('description')}
           />
         </div>
 
-        {/* Photos placeholder */}
+        {/* ── Photo placeholder ── */}
         <button
           type="button"
           className="w-full border-2 border-dashed border-gray-200 rounded-2xl p-4 flex items-center gap-3 text-gray-400 hover:border-primary hover:text-primary transition-colors"
@@ -333,22 +492,36 @@ export function ConfigureRequestPage() {
         )}
       </form>
 
-      {/* Bottom fixed: price + CTA */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 py-4">
-        {priceBreakdown && (
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="text-xs text-gray-500">Precio estimado</p>
-              <p className="text-xl font-heading font-bold text-gray-900">
-                {formatPrice(priceBreakdown.total)}
-              </p>
+      {/* ── Fixed bottom: price breakdown + CTA ── */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 py-4 shadow-lg">
+        {quote && (
+          <div className="mb-3">
+            <div className="flex items-end justify-between">
+              <div>
+                <p className="text-xs text-gray-500">Precio estimado</p>
+                <p className="text-2xl font-heading font-bold text-gray-900">
+                  {formatPrice(quote.total)}
+                </p>
+              </div>
+              <div className="text-right text-xs text-gray-400 space-y-0.5">
+                <div>Base: {formatPrice(quote.basePrice)}</div>
+                {quote.areasSurcharge > 0 && (
+                  <div className="text-amber-600">+Área: {formatPrice(quote.areasSurcharge)}</div>
+                )}
+                {quote.addonsTotal > 0 && (
+                  <div className="text-blue-600">+Extras: {formatPrice(quote.addonsTotal)}</div>
+                )}
+                <div className="text-gray-400">Comisión TUKI: {formatPrice(quote.platformFee)}</div>
+              </div>
             </div>
-            <div className="text-right text-xs text-gray-400">
-              <div>Base: {formatPrice(priceBreakdown.basePrice)}</div>
-              {priceBreakdown.nightSurcharge > 0 && (
-                <div className="text-secondary">+Nocturno: {formatPrice(priceBreakdown.nightSurcharge)}</div>
-              )}
-              <div>Comisión: {formatPrice(priceBreakdown.platformCommission)}</div>
+            <div className="mt-1.5 flex items-center gap-2">
+              <div className="h-1 flex-1 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-300"
+                  style={{ width: `${Math.min(100, Math.round((quote.subtotal / quote.total) * 100))}%` }}
+                />
+              </div>
+              <span className="text-xs text-gray-400 flex-shrink-0">~{quote.estimatedDurationMin} min</span>
             </div>
           </div>
         )}
@@ -358,10 +531,10 @@ export function ConfigureRequestPage() {
           className="w-full"
           size="lg"
           loading={submitting}
-          onClick={handleSubmit(onSubmit as never)}
+          onClick={handleSubmit(onSubmit)}
         >
-          {type === 'ON_DEMAND' && '⚡ Buscar profesional ahora'}
-          {type === 'SCHEDULED' && '📅 Confirmar programación'}
+          {type === 'ON_DEMAND'    && '⚡ Buscar profesional ahora'}
+          {type === 'SCHEDULED'   && '📅 Confirmar programación'}
           {type === 'SUBSCRIPTION' && '🔄 Ver resumen de suscripción'}
         </Button>
       </div>

@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import * as workersService from '../services/workers.service.js'
 import * as requestsService from '../services/requests.service.js'
+import * as matchingService from '../services/matching.service.js'
 import * as kycService from '../services/kyc.service.js'
 import * as paymentsService from '../services/payments.service.js'
 import { handleKycWebhook } from '../services/kyc.service.js'
@@ -98,6 +99,17 @@ router.patch(
     }
   },
 )
+
+// GET /api/workers/me/available-jobs
+// Returns SEARCHING orders near the worker, sorted by distance, with earnings estimate
+router.get('/me/available-jobs', authenticate, requireRole('WORKER'), async (req: AuthRequest, res) => {
+  try {
+    const jobs = await matchingService.getAvailableJobsForWorker(req.user!.userId)
+    return sendSuccess(res, jobs)
+  } catch (err) {
+    return sendError(res, err instanceof Error ? err.message : 'Error', 500)
+  }
+})
 
 // GET /api/workers/me/requests
 router.get('/me/requests', authenticate, requireRole('WORKER'), async (req: AuthRequest, res) => {

@@ -9,7 +9,7 @@ import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { formatPrice } from '@/lib/utils'
 
-type AdminTab = 'overview' | 'workers' | 'transactions' | 'users'
+type AdminTab = 'overview' | 'workers' | 'kyc' | 'transactions' | 'users'
 
 interface Stats {
   users: { total: number; workers: number; clients: number; pendingVerifications: number }
@@ -60,15 +60,27 @@ interface UserItem {
   avatarUrl?: string
 }
 
+interface KycWorkerItem {
+  id: string
+  kycStatus: string
+  identityVerified: boolean
+  dniFrontUrl?: string
+  dniBackUrl?: string
+  selfieBiometricUrl?: string
+  insurancePolicyUrl?: string
+  insuranceVerified: boolean
+  user: { id: string; firstName: string; lastName: string; email: string }
+}
+
 const STATUS_COLORS: Record<string, string> = {
-  PENDING: 'text-yellow-600 bg-yellow-50',
-  PENDING_PAYMENT: 'text-orange-600 bg-orange-50',
-  MATCHED: 'text-blue-600 bg-blue-50',
-  CONFIRMED: 'text-purple-600 bg-purple-50',
-  IN_PROGRESS: 'text-indigo-600 bg-indigo-50',
-  COMPLETED: 'text-green-700 bg-green-50',
-  CANCELLED: 'text-gray-500 bg-gray-50',
-  DISPUTED: 'text-red-600 bg-red-50',
+  SEARCHING:                'text-yellow-600 bg-yellow-50',
+  ASSIGNED:                 'text-blue-600 bg-blue-50',
+  EN_ROUTE:                 'text-purple-600 bg-purple-50',
+  IN_PROGRESS:              'text-indigo-600 bg-indigo-50',
+  FINISHED_PENDING_APPROVAL:'text-orange-600 bg-orange-50',
+  COMPLETED:                'text-green-700 bg-green-50',
+  CANCELLED:                'text-gray-500 bg-gray-50',
+  DISPUTED:                 'text-red-600 bg-red-50',
 }
 
 export function AdminDashboardPage() {
@@ -85,6 +97,10 @@ export function AdminDashboardPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [verifying, setVerifying] = useState<string | null>(null)
 
+  // KYC tab
+  const [kycWorkers, setKycWorkers] = useState<KycWorkerItem[]>([])
+  const [kycActioning, setKycActioning] = useState<string | null>(null)
+
   // Redirect if not admin
   useEffect(() => {
     if (user && user.role !== 'ADMIN') navigate('/home', { replace: true })
@@ -99,6 +115,10 @@ export function AdminDashboardPage() {
       api.get(`/admin/workers?filter=${workerFilter}&page=${page}`)
         .then((r) => { setWorkers(r.data.data.workers); setTotalPages(r.data.data.pages) })
         .catch(console.error)
+    } else if (tab === 'kyc') {
+      api.get('/admin/kyc/pending')
+        .then((r) => setKycWorkers(r.data.data))
+        .catch(console.error)
     } else if (tab === 'transactions') {
       api.get(`/admin/transactions?page=${page}`)
         .then((r) => { setTransactions(r.data.data.transactions); setTotalPages(r.data.data.pages) })
@@ -109,6 +129,27 @@ export function AdminDashboardPage() {
         .catch(console.error)
     }
   }, [tab, page, workerFilter, searchQ])
+
+  const handleKycAction = async (
+    workerId: string,
+    action: 'approve-kyc' | 'approve-insurance' | 'reject-insurance',
+  ) => {
+    setKycActioning(workerId)
+    try {
+      await api.patch(`/admin/workers/${workerId}/${action}`)
+      setKycWorkers((prev) => prev.filter((w) => {
+        // Remove from list once both sections are cleared
+        if (action === 'approve-kyc' || action === 'approve-insurance' || action === 'reject-insurance') {
+          return w.id !== workerId
+        }
+        return true
+      }))
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setKycActioning(null)
+    }
+  }
 
   const handleVerify = async (workerUserId: string, verified: boolean) => {
     setVerifying(workerUserId)
@@ -130,7 +171,7 @@ export function AdminDashboardPage() {
       <div className="bg-gray-900 text-white px-6 pt-12 pb-4">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="font-heading font-bold text-2xl">CasApp Admin</h1>
+            <h1 className="font-heading font-bold text-2xl">TUKI Admin</h1>
             <p className="text-gray-400 text-sm">Panel de administración</p>
           </div>
           <button
@@ -142,16 +183,19 @@ export function AdminDashboardPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1">
-          {(['overview', 'workers', 'transactions', 'users'] as AdminTab[]).map((t) => (
+        <div className="flex gap-1 overflow-x-auto pb-0.5">
+          {(['overview', 'workers', 'kyc', 'transactions', 'users'] as AdminTab[]).map((t) => (
             <button
               key={t}
               onClick={() => { setTab(t); setPage(1) }}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all capitalize ${
+              className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                 tab === t ? 'bg-white text-gray-900' : 'text-gray-400 hover:text-white'
               }`}
             >
-              {t === 'overview' ? 'Resumen' : t === 'workers' ? 'Trabajadores' : t === 'transactions' ? 'Pagos' : 'Usuarios'}
+              {t === 'overview' ? 'Resumen' :
+               t === 'workers' ? 'Trabajadores' :
+               t === 'kyc' ? `KYC${kycWorkers.length > 0 ? ` (${kycWorkers.length})` : ''}` :
+               t === 'transactions' ? 'Pagos' : 'Usuarios'}
             </button>
           ))}
         </div>
@@ -172,7 +216,7 @@ export function AdminDashboardPage() {
             {/* Pending verifications alert */}
             {stats.users.pendingVerifications > 0 && (
               <button
-                onClick={() => { setTab('workers'); setWorkerFilter('unverified') }}
+                onClick={() => setTab('kyc')}
                 className="w-full flex items-center gap-3 bg-yellow-50 border border-yellow-200 rounded-2xl p-4 text-left"
               >
                 <Shield size={20} className="text-yellow-600 flex-shrink-0" />
@@ -214,6 +258,129 @@ export function AdminDashboardPage() {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ── KYC Review ── */}
+        {tab === 'kyc' && (
+          <div className="space-y-4">
+            {kycWorkers.length === 0 ? (
+              <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
+                <div className="text-4xl mb-3">✅</div>
+                <p className="text-gray-600 font-medium">Sin revisiones pendientes</p>
+                <p className="text-gray-400 text-sm mt-1">Todos los documentos están al día</p>
+              </div>
+            ) : (
+              kycWorkers.map((worker) => {
+                const hasIdentityPending = worker.kycStatus === 'SUBMITTED' && !worker.identityVerified
+                const hasInsurancePending = !!worker.insurancePolicyUrl && !worker.insuranceVerified
+                const isActioning = kycActioning === worker.id
+
+                return (
+                  <div key={worker.id} className="bg-white rounded-2xl p-4 shadow-sm space-y-4">
+                    {/* Worker header */}
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-white font-bold flex-shrink-0">
+                        {worker.user.firstName[0]}{worker.user.lastName[0]}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-900">
+                          {worker.user.firstName} {worker.user.lastName}
+                        </p>
+                        <p className="text-xs text-gray-500">{worker.user.email}</p>
+                      </div>
+                    </div>
+
+                    {/* Identity section */}
+                    {hasIdentityPending && (
+                      <div className="border border-blue-200 rounded-xl p-3 bg-blue-50">
+                        <p className="text-sm font-semibold text-blue-800 mb-2">
+                          🪪 Verificación de identidad — pendiente
+                        </p>
+                        <div className="flex gap-2 mb-3">
+                          {[
+                            { label: 'DNI frente', url: worker.dniFrontUrl },
+                            { label: 'DNI dorso', url: worker.dniBackUrl },
+                            { label: 'Selfie', url: worker.selfieBiometricUrl },
+                          ].map(({ label, url }) => (
+                            url ? (
+                              <a
+                                key={label}
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex-1 text-center text-xs bg-white border border-blue-200 rounded-lg py-2 text-blue-700 hover:bg-blue-100 truncate px-1"
+                              >
+                                {label} ↗
+                              </a>
+                            ) : (
+                              <div key={label} className="flex-1 text-center text-xs bg-gray-100 border border-gray-200 rounded-lg py-2 text-gray-400 px-1">
+                                {label} —
+                              </div>
+                            )
+                          ))}
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            disabled={isActioning}
+                            onClick={() => handleKycAction(worker.id, 'approve-kyc')}
+                            className="flex-1 flex items-center justify-center gap-1 bg-green-600 text-white text-sm font-medium py-2 rounded-xl disabled:opacity-50"
+                          >
+                            {isActioning ? (
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <CheckCircle size={14} />
+                            )}
+                            Aprobar identidad
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Insurance section */}
+                    {hasInsurancePending && (
+                      <div className="border border-amber-200 rounded-xl p-3 bg-amber-50">
+                        <p className="text-sm font-semibold text-amber-800 mb-2">
+                          🛡️ Póliza ART/seguro — pendiente
+                        </p>
+                        {worker.insurancePolicyUrl && (
+                          <a
+                            href={worker.insurancePolicyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block text-center text-xs bg-white border border-amber-200 rounded-lg py-2 text-amber-700 hover:bg-amber-100 mb-3"
+                          >
+                            Ver documento de póliza ↗
+                          </a>
+                        )}
+                        <div className="flex gap-2">
+                          <button
+                            disabled={isActioning}
+                            onClick={() => handleKycAction(worker.id, 'approve-insurance')}
+                            className="flex-1 flex items-center justify-center gap-1 bg-green-600 text-white text-sm font-medium py-2 rounded-xl disabled:opacity-50"
+                          >
+                            {isActioning ? (
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <CheckCircle size={14} />
+                            )}
+                            Aprobar seguro
+                          </button>
+                          <button
+                            disabled={isActioning}
+                            onClick={() => handleKycAction(worker.id, 'reject-insurance')}
+                            className="flex-1 flex items-center justify-center gap-1 border border-red-300 text-red-600 text-sm font-medium py-2 rounded-xl disabled:opacity-50 bg-white"
+                          >
+                            <XCircle size={14} />
+                            Rechazar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            )}
           </div>
         )}
 

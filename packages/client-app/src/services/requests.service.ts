@@ -3,6 +3,7 @@ import type { LotSize, EquipmentTier, ServiceCategory } from '@tuki/shared'
 
 export interface CreateRequestPayload {
   categoryId: string
+  type?: 'ON_DEMAND' | 'SCHEDULED'
   address: string
   latitude: number
   longitude: number

@@ -285,9 +285,10 @@ model ServiceRequest {
   status     OrderStatus @default(SEARCHING)
 
   // Location of the job
-  address   String
-  latitude  Float
-  longitude Float
+  address          String
+  latitude         Float
+  longitude        Float
+  isGatedCommunity Boolean @default(false) // copied from ClientAddress at creation time
 
   // Visual lot sizing + optional exact area
   lotSize   LotSize?

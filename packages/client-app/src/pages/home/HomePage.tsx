@@ -1,32 +1,101 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MapPin, Bell, ChevronDown, Clock, Repeat } from 'lucide-react'
+import { Bell, ChevronDown, Clock, MapPin, Repeat } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
-import { Logo } from '@/components/ui/Logo'
+import { categoriesService, requestsService, subscriptionsService } from '@/services/requests.service'
+import type { ServiceCategory } from '@tuki/shared'
 
-const SERVICE_CATEGORIES = [
-  { slug: 'jardineria', name: 'Jardinería', icon: '🌿', color: 'bg-green-50 text-green-700' },
-  { slug: 'piletas', name: 'Piletas', icon: '💧', color: 'bg-blue-50 text-blue-700' },
-  { slug: 'limpieza', name: 'Limpieza', icon: '🧹', color: 'bg-purple-50 text-purple-700' },
-  { slug: 'plomeria', name: 'Plomería', icon: '🔧', color: 'bg-orange-50 text-orange-700' },
-  { slug: 'electricidad', name: 'Electricidad', icon: '⚡', color: 'bg-yellow-50 text-yellow-700' },
-  { slug: 'pintura', name: 'Pintura', icon: '🎨', color: 'bg-pink-50 text-pink-700' },
-  { slug: 'carpinteria', name: 'Carpintería', icon: '🪟', color: 'bg-amber-50 text-amber-700' },
-  { slug: 'plagas', name: 'Plagas', icon: '🐜', color: 'bg-red-50 text-red-700' },
-  { slug: 'aire-acondicionado', name: 'A/C', icon: '❄️', color: 'bg-cyan-50 text-cyan-700' },
-  { slug: 'otros', name: 'Otros', icon: '➕', color: 'bg-gray-50 text-gray-700' },
+// ─── Per-slug visual overrides (UI only) ─────────────────────────────────────
+const CATEGORY_VISUALS: Record<string, { icon: string; color: string }> = {
+  'jardineria':         { icon: '🌿', color: 'bg-green-50 text-green-700' },
+  'piletas':            { icon: '💧', color: 'bg-blue-50 text-blue-700' },
+  'pintura':            { icon: '🎨', color: 'bg-pink-50 text-pink-700' },
+  'limpieza-de-vidrios':{ icon: '🪟', color: 'bg-sky-50 text-sky-700' },
+}
+const DEFAULT_VISUAL = { icon: '🔧', color: 'bg-gray-50 text-gray-700' }
+
+type ServiceType = 'ON_DEMAND' | 'SCHEDULED' | 'SUBSCRIPTION'
+
+const BOOKING_MODES: { type: ServiceType; emoji: string; label: string; sublabel: string; activeColor: string }[] = [
+  { type: 'ON_DEMAND',    emoji: '⚡', label: 'Ahora',       sublabel: 'On-demand', activeColor: 'border-secondary text-secondary' },
+  { type: 'SCHEDULED',   emoji: '📅', label: 'Programar',   sublabel: 'Elegí horario', activeColor: 'border-blue-500 text-blue-600' },
+  { type: 'SUBSCRIPTION', emoji: '🔄', label: 'Suscripción', sublabel: 'Recurrente',   activeColor: 'border-primary text-primary' },
 ]
 
 export function HomePage() {
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
 
-  const handleCategorySelect = (slug: string) => {
-    navigate(`/services/${slug}`)
-  }
+  const [categories, setCategories]   = useState<ServiceCategory[]>([])
+  const [catLoading, setCatLoading]   = useState(true)
+  const [activeType, setActiveType]   = useState<ServiceType>('ON_DEMAND')
 
+  // Live stats
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [activeRequests, setActiveRequests]     = useState(0)
+  const [subscriptionCount, setSubscriptionCount] = useState(0)
+  const [completedCount, setCompletedCount]     = useState(0)
+
+  // Geolocation
+  const [geoLabel, setGeoLabel] = useState<string>('Obteniendo ubicación...')
+
+  // ── Load categories ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    categoriesService
+      .getAll()
+      .then((all) => setCategories(all.filter((c) => c.isActive)))
+      .catch(() => setCategories([]))
+      .finally(() => setCatLoading(false))
+  }, [])
+
+  // ── Load stats ────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!user) return
+    Promise.all([
+      requestsService.getMyRequests().catch(() => []),
+      subscriptionsService.getMySubscriptions().catch(() => []),
+    ]).then(([requests, subs]) => {
+      const active = requests.filter(
+        (r: { status: string }) =>
+          !['COMPLETED', 'CANCELLED', 'DISPUTED'].includes(r.status),
+      )
+      setActiveRequests(active.length)
+      setSubscriptionCount(
+        subs.filter((s: { isActive: boolean }) => s.isActive).length,
+      )
+      setCompletedCount(
+        requests.filter((r: { status: string }) => r.status === 'COMPLETED').length,
+      )
+    }).finally(() => setStatsLoading(false))
+  }, [user])
+
+  // ── Geolocation ───────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!('geolocation' in navigator)) {
+      setGeoLabel('Buenos Aires, ARG')
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        // Display coords until reverse-geocoding is implemented
+        const lat = pos.coords.latitude.toFixed(4)
+        const lng = pos.coords.longitude.toFixed(4)
+        setGeoLabel(`${lat}, ${lng}`)
+      },
+      () => setGeoLabel('Buenos Aires, ARG'),
+      { timeout: 4000 },
+    )
+  }, [])
+
+  // ── Navigation ────────────────────────────────────────────────────────────────
+  const handleCategorySelect = (slug: string) =>
+    navigate(`/services/${slug}?type=${activeType}`)
+
+  // ─────────────────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-background pb-24">
-      {/* Header */}
+
+      {/* ── Header ── */}
       <div className="bg-primary px-6 pt-12 pb-6 text-white">
         <div className="flex items-start justify-between mb-4">
           <div>
@@ -43,57 +112,58 @@ export function HomePage() {
               onClick={logout}
               className="w-10 h-10 rounded-full bg-primary-600 overflow-hidden flex items-center justify-center"
             >
-              <span className="text-sm font-bold">{user?.firstName?.[0]}{user?.lastName?.[0]}</span>
+              <span className="text-sm font-bold">
+                {user?.firstName?.[0]}{user?.lastName?.[0]}
+              </span>
             </button>
           </div>
         </div>
 
-        {/* Address bar */}
+        {/* Address / GPS bar */}
         <button className="flex items-center gap-2 bg-primary-600 rounded-2xl px-4 py-2.5 w-full text-left">
           <MapPin size={16} className="text-primary-200 flex-shrink-0" />
-          <span className="text-sm text-white flex-1 truncate">
-            {user ? 'Seleccioná tu dirección' : 'Cargando...'}
-          </span>
+          <span className="text-sm text-white flex-1 truncate">{geoLabel}</span>
           <ChevronDown size={16} className="text-primary-200" />
         </button>
       </div>
 
-      {/* Content */}
+      {/* ── Content ── */}
       <div className="px-4 pt-6">
+
         {/* Quick stats */}
         <div className="grid grid-cols-3 gap-3 mb-6">
-          <div className="card text-center">
-            <div className="text-2xl mb-1">0</div>
-            <div className="text-xs text-gray-500">Pedidos activos</div>
-          </div>
-          <div className="card text-center">
-            <div className="text-2xl mb-1">0</div>
-            <div className="text-xs text-gray-500">Suscripciones</div>
-          </div>
-          <div className="card text-center">
-            <div className="text-2xl mb-1">0</div>
-            <div className="text-xs text-gray-500">Completados</div>
-          </div>
+          {[
+            { value: statsLoading ? '…' : activeRequests,     label: 'Pedidos activos' },
+            { value: statsLoading ? '…' : subscriptionCount,  label: 'Suscripciones' },
+            { value: statsLoading ? '…' : completedCount,     label: 'Completados' },
+          ].map(({ value, label }) => (
+            <div key={label} className="card text-center">
+              <div className="text-2xl font-bold mb-0.5">{value}</div>
+              <div className="text-xs text-gray-500">{label}</div>
+            </div>
+          ))}
         </div>
 
-        {/* Booking modes */}
+        {/* Booking mode toggle */}
         <div className="mb-6">
           <div className="grid grid-cols-3 gap-3">
-            <button className="card text-center hover:shadow-card-hover transition-shadow">
-              <div className="text-2xl mb-1">⚡</div>
-              <div className="text-xs font-semibold text-secondary">Ahora</div>
-              <div className="text-xs text-gray-400">On-demand</div>
-            </button>
-            <button className="card text-center hover:shadow-card-hover transition-shadow">
-              <div className="text-2xl mb-1">📅</div>
-              <div className="text-xs font-semibold text-blue-600">Programar</div>
-              <div className="text-xs text-gray-400">Elegí horario</div>
-            </button>
-            <button className="card text-center hover:shadow-card-hover transition-shadow">
-              <div className="text-2xl mb-1">🔄</div>
-              <div className="text-xs font-semibold text-primary">Suscripción</div>
-              <div className="text-xs text-gray-400">Recurrente</div>
-            </button>
+            {BOOKING_MODES.map((mode) => (
+              <button
+                key={mode.type}
+                onClick={() => setActiveType(mode.type)}
+                className={`card text-center border-2 hover:shadow-card-hover transition-all ${
+                  activeType === mode.type
+                    ? `${mode.activeColor} border-current`
+                    : 'border-transparent'
+                }`}
+              >
+                <div className="text-2xl mb-1">{mode.emoji}</div>
+                <div className={`text-xs font-semibold ${activeType === mode.type ? '' : 'text-gray-700'}`}>
+                  {mode.label}
+                </div>
+                <div className="text-xs text-gray-400">{mode.sublabel}</div>
+              </button>
+            ))}
           </div>
         </div>
 
@@ -102,38 +172,84 @@ export function HomePage() {
           <h2 className="text-lg font-heading font-bold text-gray-900 mb-4">
             ¿Qué necesitás?
           </h2>
-          <div className="grid grid-cols-2 gap-3">
-            {SERVICE_CATEGORIES.map((cat) => (
-              <button
-                key={cat.slug}
-                onClick={() => handleCategorySelect(cat.slug)}
-                className="card flex items-center gap-3 hover:shadow-card-hover transition-all active:scale-[0.98] text-left"
-              >
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${cat.color}`}>
-                  {cat.icon}
-                </div>
-                <span className="font-medium text-gray-800 text-sm">{cat.name}</span>
-              </button>
-            ))}
-          </div>
+
+          {catLoading ? (
+            <div className="grid grid-cols-2 gap-3">
+              {[1, 2].map((i) => (
+                <div key={i} className="card animate-pulse h-16 bg-gray-100" />
+              ))}
+            </div>
+          ) : categories.length === 0 ? (
+            <div className="card text-center py-8 text-gray-400 text-sm">
+              No hay servicios disponibles por el momento.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {categories.map((cat) => {
+                const visual = CATEGORY_VISUALS[cat.slug] ?? DEFAULT_VISUAL
+                return (
+                  <button
+                    key={cat.slug}
+                    onClick={() => handleCategorySelect(cat.slug)}
+                    className="card flex items-center gap-3 hover:shadow-card-hover transition-all active:scale-[0.98] text-left"
+                  >
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${visual.color}`}>
+                      {cat.iconUrl ? (
+                        <img src={cat.iconUrl} alt={cat.name} className="w-7 h-7 object-contain" />
+                      ) : (
+                        visual.icon
+                      )}
+                    </div>
+                    <span className="font-medium text-gray-800 text-sm">{cat.name}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
 
-        {/* Recent activity placeholder */}
+        {/* Recent activity — navigate to full list */}
         <div>
-          <h2 className="text-lg font-heading font-bold text-gray-900 mb-4">
-            Actividad reciente
-          </h2>
-          <div className="card text-center py-8">
-            <div className="text-4xl mb-3">🏡</div>
-            <p className="text-gray-500 text-sm">
-              Todavía no tenés pedidos.<br />
-              ¡Contratá tu primer servicio!
-            </p>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-heading font-bold text-gray-900">Actividad reciente</h2>
+            {activeRequests > 0 && (
+              <button
+                onClick={() => navigate('/requests')}
+                className="text-xs text-primary font-medium"
+              >
+                Ver todo
+              </button>
+            )}
           </div>
+
+          {activeRequests > 0 ? (
+            <button
+              onClick={() => navigate('/requests')}
+              className="card w-full flex items-center gap-3 text-left hover:shadow-card-hover transition-shadow"
+            >
+              <div className="w-10 h-10 rounded-xl bg-secondary-50 flex items-center justify-center text-xl">
+                ⚡
+              </div>
+              <div>
+                <p className="font-medium text-sm text-gray-800">
+                  {activeRequests} pedido{activeRequests !== 1 ? 's' : ''} activo{activeRequests !== 1 ? 's' : ''}
+                </p>
+                <p className="text-xs text-gray-500">Tocá para ver el estado</p>
+              </div>
+            </button>
+          ) : (
+            <div className="card text-center py-8">
+              <div className="text-4xl mb-3">🏡</div>
+              <p className="text-gray-500 text-sm">
+                Todavía no tenés pedidos.<br />
+                ¡Contratá tu primer servicio!
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Bottom nav */}
+      {/* ── Bottom nav ── */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-6 py-3">
         <div className="flex justify-around">
           <button className="flex flex-col items-center gap-1 text-primary">

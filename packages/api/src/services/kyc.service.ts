@@ -196,6 +196,33 @@ export async function approveInsurance(
 }
 
 /**
+ * Called by admin when they reject the insurance document.
+ * Clears the URL so the worker can re-upload.
+ */
+export async function rejectInsurance(workerId: string): Promise<void> {
+  await prisma.workerProfile.update({
+    where: { id: workerId },
+    data: { insurancePolicyUrl: null, insuranceVerified: false, isVerified: false },
+  })
+}
+
+/**
+ * Called by admin to manually approve identity KYC (override of provider result).
+ */
+export async function approveKycManually(workerId: string): Promise<void> {
+  const worker = await prisma.workerProfile.findUnique({ where: { id: workerId } })
+  if (!worker) throw new Error('Worker not found')
+  await prisma.workerProfile.update({
+    where: { id: workerId },
+    data: {
+      kycStatus: 'APPROVED',
+      identityVerified: true,
+      isVerified: worker.insuranceVerified,
+    },
+  })
+}
+
+/**
  * Upload an equipment photo and create a WorkerEquipment record.
  */
 export async function uploadEquipmentPhoto(

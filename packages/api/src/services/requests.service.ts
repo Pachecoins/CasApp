@@ -79,6 +79,7 @@ export async function createRequest(params: CreateRequestParams) {
       lotSize,
       lotAreaM2: params.lotAreaM2,
       addons: params.addons ?? [],
+      isGatedCommunity: params.isGatedCommunity ?? false,
       quotedPrice: quote.total,
       platformFeePercent: 15,
       description: params.description,
