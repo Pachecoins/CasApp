@@ -2,8 +2,9 @@ import { PrismaClient, EquipmentTier } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
-// ─── MVP SERVICE CATEGORIES ───────────────────────────────────────────────────
-// Strict MVP scope: Jardinería + Piletas/Piscinas only.
+// ─── SERVICE CATEGORIES ───────────────────────────────────────────────────────
+// MVP scope (isActive: true):  Jardinería + Piletas/Piscinas
+// Future scope (isActive: false): Pintura + Limpieza de Vidrios
 // Prices in ARS. Premium tier is ~40% higher per the product spec.
 // addonDefinitions drive the interactive quoter UI.
 
@@ -99,6 +100,99 @@ const categories = [
       },
     ]),
   },
+
+  // ── FUTURE CATEGORIES (isActive: false — invisible en el MVP) ───────────────
+
+  {
+    name: 'Pintura',
+    slug: 'pintura',
+    description: 'Pintura interior y exterior de paredes, techos, frentes y aberturas',
+    iconUrl: '/icons/painting.svg',
+    isActive: false,
+    basePriceStandard: 6000,
+    basePricePremium: 9500,
+    pricePerM2Standard: 35,
+    pricePerM2Premium: 55,
+    addonDefinitions: JSON.stringify([
+      {
+        key: 'ceiling',
+        label: 'Pintura de techo',
+        description: 'Aplicación en cielorraso o techo (requiere andamio o escalera)',
+        surchargeType: 'percent',
+        value: 25,
+      },
+      {
+        key: 'prep_surface',
+        label: 'Preparación de superficie',
+        description: 'Masillado, lija y sellado previo a la pintura',
+        surchargeType: 'flat',
+        value: 3500,
+      },
+      {
+        key: 'two_coats',
+        label: 'Doble mano',
+        description: 'Segunda mano de pintura para mejor cobertura',
+        surchargeType: 'percent',
+        value: 40,
+      },
+      {
+        key: 'exterior',
+        label: 'Frente / exterior',
+        description: 'Pintura exterior resistente a la intemperie',
+        surchargeType: 'percent',
+        value: 30,
+      },
+      {
+        key: 'furniture_move',
+        label: 'Corrida de muebles',
+        description: 'El pintor mueve y vuelve a colocar muebles del ambiente',
+        surchargeType: 'flat',
+        value: 1500,
+      },
+    ]),
+  },
+
+  {
+    name: 'Limpieza de Vidrios',
+    slug: 'limpieza-vidrios',
+    description: 'Limpieza profesional de ventanas, vidriera y fachadas de vidrio',
+    iconUrl: '/icons/glass-cleaning.svg',
+    isActive: false,
+    basePriceStandard: 3500,
+    basePricePremium: 5500,
+    pricePerM2Standard: 25,
+    pricePerM2Premium: 40,
+    addonDefinitions: JSON.stringify([
+      {
+        key: 'frames',
+        label: 'Limpieza de marcos y burletes',
+        description: 'Limpieza profunda de marcos de aluminio o PVC',
+        surchargeType: 'flat',
+        value: 800,
+      },
+      {
+        key: 'high_access',
+        label: 'Acceso en altura (escalera)',
+        description: 'Ventanas de piso 2 o superiores — requiere escalera',
+        surchargeType: 'percent',
+        value: 30,
+      },
+      {
+        key: 'blinds',
+        label: 'Limpieza de persianas o cortinas de enrollar',
+        description: 'Desmontaje, lavado y remontaje',
+        surchargeType: 'flat',
+        value: 1200,
+      },
+      {
+        key: 'both_sides',
+        label: 'Interior y exterior',
+        description: 'Limpieza de ambas caras del vidrio',
+        surchargeType: 'percent',
+        value: 50,
+      },
+    ]),
+  },
 ]
 
 // ─── SEED WORKERS (dev/test only) ─────────────────────────────────────────────
@@ -190,6 +284,7 @@ async function main() {
         name: cat.name,
         description: cat.description,
         iconUrl: cat.iconUrl,
+        isActive: cat.isActive ?? true,
         basePriceStandard: cat.basePriceStandard,
         basePricePremium: cat.basePricePremium,
         pricePerM2Standard: cat.pricePerM2Standard,
