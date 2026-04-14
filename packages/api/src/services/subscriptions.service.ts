@@ -1,5 +1,4 @@
 import { prisma } from '../config/prisma.js'
-import { calculatePrice } from '@casapp/shared'
 import type { SubscriptionFrequency } from '@casapp/shared'
 import { notifyNearbyWorkersExport } from './requests.service.js'
 
@@ -21,6 +20,12 @@ function getNextOccurrence(dayOfWeek: number, timeSlot: string, from: Date = new
 
 function getFrequencyDays(freq: SubscriptionFrequency): number {
   return freq === 'WEEKLY' ? 7 : freq === 'BIWEEKLY' ? 14 : 30
+}
+
+const FREQ_MULTIPLIERS: Record<SubscriptionFrequency, number> = {
+  WEEKLY: 0.75,
+  BIWEEKLY: 0.80,
+  MONTHLY: 0.85,
 }
 
 // ─── Create ──────────────────────────────────────────────────────────────────
@@ -46,14 +51,12 @@ export async function createSubscription(params: CreateSubscriptionParams) {
 
   const category = await prisma.serviceCategory.findUnique({
     where: { id: params.categoryId },
+    select: { id: true, name: true, basePriceStandard: true },
   })
   if (!category) throw new Error('Categoría no encontrada')
 
-  const priceBreakdown = calculatePrice({
-    basePrice: category.scheduledPrice,
-    type: 'SUBSCRIPTION',
-    frequency: params.frequency,
-  })
+  const multiplier = FREQ_MULTIPLIERS[params.frequency] ?? 1
+  const pricePerVisit = Math.round(category.basePriceStandard * multiplier)
 
   const nextServiceDate = getNextOccurrence(params.dayOfWeek, params.timeSlot)
 
@@ -65,12 +68,16 @@ export async function createSubscription(params: CreateSubscriptionParams) {
       dayOfWeek: params.dayOfWeek,
       timeSlot: params.timeSlot,
       preferSameWorker: params.preferSameWorker ?? false,
-      pricePerVisit: priceBreakdown.total,
+      pricePerVisit,
+      address: params.address,
+      latitude: params.latitude,
+      longitude: params.longitude,
+      description: params.description,
       nextServiceDate,
       isActive: true,
     },
     include: {
-      category: { select: { name: true, slug: true, basePrice: true, scheduledPrice: true } },
+      category: { select: { name: true, slug: true } },
       worker: {
         include: { user: { select: { firstName: true, lastName: true, avatarUrl: true } } },
       },
@@ -117,7 +124,6 @@ export async function getSubscriptionById(subscriptionId: string, userId: string
   })
   if (!subscription) throw new Error('Suscripción no encontrada')
 
-  // access control — only the client who owns it
   if (subscription.client.user.id !== userId) throw new Error('Acceso denegado')
 
   return subscription
@@ -141,7 +147,6 @@ export async function updateSubscription(
   const dayOfWeek = data.dayOfWeek ?? subscription.dayOfWeek
   const timeSlot = data.timeSlot ?? subscription.timeSlot
 
-  // Recalculate next service date if day/time changed
   const nextServiceDate =
     data.dayOfWeek !== undefined || data.timeSlot !== undefined
       ? getNextOccurrence(dayOfWeek, timeSlot)
@@ -186,18 +191,20 @@ export async function generateScheduledRequests() {
   const now = new Date()
   const windowEnd = new Date(now.getTime() + 60 * 60 * 1000) // next 60 min
 
+  const ACTIVE_STATUSES = ['SEARCHING', 'ASSIGNED', 'EN_ROUTE', 'IN_PROGRESS', 'FINISHED_PENDING_APPROVAL']
+
   const dueSubscriptions = await prisma.subscription.findMany({
     where: {
       isActive: true,
       nextServiceDate: { lte: windowEnd },
     },
     include: {
-      category: true,
+      category: { select: { id: true, basePriceStandard: true } },
       client: {
         include: {
           user: { select: { id: true } },
           serviceRequests: {
-            where: { status: { in: ['PENDING_PAYMENT', 'PENDING', 'MATCHED', 'CONFIRMED', 'IN_PROGRESS'] } },
+            where: { status: { in: ACTIVE_STATUSES } },
             select: { id: true },
             take: 1,
           },
@@ -212,51 +219,44 @@ export async function generateScheduledRequests() {
   console.log(`[Cron] Processing ${dueSubscriptions.length} due subscription(s)`)
 
   for (const sub of dueSubscriptions) {
-    // Skip if client already has an active request right now
+    // Skip if client already has an active request
     if (sub.client.serviceRequests.length > 0) continue
 
+    // Skip subscriptions without location data
+    if (!sub.latitude || !sub.longitude || !sub.address) continue
+
     try {
-      const priceBreakdown = calculatePrice({
-        basePrice: sub.category.scheduledPrice,
-        type: 'SUBSCRIPTION',
-        frequency: sub.frequency as SubscriptionFrequency,
-      })
+      const quotedPrice = sub.pricePerVisit // already stored at subscription creation
 
       // Prefer same worker if configured and available
       let preferredWorkerId: string | undefined
       if (sub.preferSameWorker && sub.workerId) {
         const workerProfile = await prisma.workerProfile.findUnique({
           where: { id: sub.workerId },
+          select: { isAvailable: true },
         })
         if (workerProfile?.isAvailable) {
           preferredWorkerId = sub.workerId
         }
       }
 
-      const clientProfile = await prisma.clientProfile.findUnique({
-        where: { userId: sub.client.user.id },
-        select: { id: true, address: true, latitude: true, longitude: true },
-      })
-      if (!clientProfile?.latitude || !clientProfile?.longitude) continue
-
-      // Create the service request for this subscription cycle
       const request = await prisma.serviceRequest.create({
         data: {
-          clientId: clientProfile.id,
+          clientId: sub.clientId,
           categoryId: sub.categoryId,
-          type: 'SUBSCRIPTION',
-          status: 'PENDING',
-          paymentStatus: 'PENDING',
-          address: clientProfile.address ?? '',
-          latitude: clientProfile.latitude,
-          longitude: clientProfile.longitude,
-          finalPrice: priceBreakdown.total,
+          status: 'SEARCHING',
+          address: sub.address,
+          latitude: sub.latitude,
+          longitude: sub.longitude,
+          quotedPrice,
+          platformFeePercent: 15,
           workerId: preferredWorkerId,
           scheduledAt: sub.nextServiceDate ?? undefined,
+          description: sub.description ?? undefined,
         },
       })
 
-      // Calculate next occurrence based on frequency
+      // Advance next occurrence
       const freqDays = getFrequencyDays(sub.frequency as SubscriptionFrequency)
       const nextDate = new Date(sub.nextServiceDate ?? now)
       nextDate.setDate(nextDate.getDate() + freqDays)
@@ -265,18 +265,13 @@ export async function generateScheduledRequests() {
         where: { id: sub.id },
         data: {
           nextServiceDate: nextDate,
-          ...(preferredWorkerId ? {} : { workerId: null }), // clear preferred if unavailable
+          ...(preferredWorkerId ? {} : { workerId: null }),
         },
       })
 
-      // If no preferred worker assigned, trigger matching
+      // Trigger worker matching (payment will be charged separately or inline)
       if (!preferredWorkerId) {
-        notifyNearbyWorkersExport(
-          request.id,
-          clientProfile.latitude,
-          clientProfile.longitude,
-          sub.categoryId,
-        ).catch(console.error)
+        notifyNearbyWorkersExport(request.id).catch(console.error)
       }
 
       console.log(`[Cron] Created subscription request ${request.id} for sub ${sub.id}`)

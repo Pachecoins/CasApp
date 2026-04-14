@@ -334,7 +334,10 @@ export async function getPaymentHistory(userId: string, role: string) {
     where: { serviceRequest: { workerId: profile.id }, status: 'APPROVED' },
     include: {
       serviceRequest: {
-        include: {
+        select: {
+          id: true,
+          address: true,
+          scheduledAt: true,
           category: { select: { name: true, slug: true } },
           client: {
             include: { user: { select: { firstName: true, lastName: true, avatarUrl: true } } },

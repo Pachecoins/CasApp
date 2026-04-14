@@ -13,19 +13,13 @@ interface EarningItem {
   createdAt: string
   serviceRequest: {
     id: string
-    type: string
+    scheduledAt?: string | null
     address: string
     category: { name: string }
     client: {
       user: { firstName: string; lastName: string; avatarUrl?: string }
     }
   }
-}
-
-const TYPE_EMOJIS: Record<string, string> = {
-  ON_DEMAND: '⚡',
-  SCHEDULED: '📅',
-  SUBSCRIPTION: '🔄',
 }
 
 function groupByMonth(items: EarningItem[]) {
@@ -65,7 +59,8 @@ export function EarningsPage() {
     return true
   })
 
-  const totalEarnings = filtered.reduce((sum, e) => sum + (e.workerEarnings ?? e.amount * 0.8), 0)
+  const workerNet = (e: EarningItem) => e.workerEarnings ?? Math.round(e.amount / 1.15)
+  const totalEarnings = filtered.reduce((sum, e) => sum + workerNet(e), 0)
   const totalServices = filtered.length
   const avgPerService = totalServices > 0 ? totalEarnings / totalServices : 0
 
@@ -112,7 +107,7 @@ export function EarningsPage() {
             <span className="text-xs opacity-70">Ganancias netas</span>
           </div>
           <p className="text-3xl font-heading font-bold">{formatPrice(totalEarnings)}</p>
-          <p className="text-xs opacity-60 mt-1">80% del total cobrado</p>
+          <p className="text-xs opacity-60 mt-1">Neto después de comisión TUKI (15%)</p>
         </div>
         <div className="space-y-3">
           <div className="bg-white rounded-2xl p-3 shadow-sm">
@@ -150,14 +145,15 @@ export function EarningsPage() {
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-700 capitalize">{month}</h3>
                 <span className="text-sm font-medium text-primary">
-                  {formatPrice(items.reduce((s, e) => s + (e.workerEarnings ?? e.amount * 0.8), 0))}
+                  {formatPrice(items.reduce((s, e) => s + workerNet(e), 0))}
                 </span>
               </div>
 
               <div className="space-y-2">
                 {items.map((earning) => {
-                  const net = earning.workerEarnings ?? earning.amount * 0.8
+                  const net = workerNet(earning)
                   const clientName = `${earning.serviceRequest.client.user.firstName} ${earning.serviceRequest.client.user.lastName}`
+                  const typeEmoji = earning.serviceRequest.scheduledAt ? '📅' : '⚡'
 
                   return (
                     <button
@@ -166,7 +162,7 @@ export function EarningsPage() {
                       className="w-full bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3 text-left"
                     >
                       <div className="w-11 h-11 bg-gray-50 rounded-xl flex items-center justify-center text-xl flex-shrink-0">
-                        {TYPE_EMOJIS[earning.serviceRequest.type] ?? '🏠'}
+                        {typeEmoji}
                       </div>
 
                       <div className="flex-1 min-w-0">
