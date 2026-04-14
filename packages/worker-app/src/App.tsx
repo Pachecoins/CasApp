@@ -8,7 +8,7 @@ import { JobDetailPage } from './pages/requests/JobDetailPage'
 import { JobsPage } from './pages/requests/JobsPage'
 import { EarningsPage } from './pages/earnings/EarningsPage'
 import { ProfilePage } from './pages/profile/ProfilePage'
-import { WorkerOnboardingPage, shouldShowWorkerOnboarding } from './pages/onboarding/OnboardingPage'
+import WorkerOnboardingPage, { shouldShowWorkerOnboarding } from './pages/onboarding/OnboardingPage'
 import { useAuthStore } from './store/auth.store'
 import { usePushNotifications } from './hooks/usePushNotifications'
 

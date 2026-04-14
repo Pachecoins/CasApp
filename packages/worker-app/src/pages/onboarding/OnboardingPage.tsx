@@ -368,6 +368,10 @@ const STEP_LABELS: Partial<Record<Step, string>> = {
   identity: 'Identidad', equipment: 'Equipamiento', insurance: 'Seguro', mercadopago: 'MercadoPago',
 }
 
+export function shouldShowWorkerOnboarding(): boolean {
+  return localStorage.getItem('onboarding_completed') !== 'true'
+}
+
 export default function OnboardingPage() {
   const [step, setStep] = useState<Step>('welcome')
   const [docs, setDocs] = useState<IdentityDocs>({ dniFront: null, dniBack: null, selfie: null })

@@ -9,6 +9,16 @@
       "import": "./dist/index.js",
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./utils/price.js": {
+      "import": "./dist/utils/price.js",
+      "require": "./dist/utils/price.js",
+      "types": "./dist/utils/price.d.ts"
+    },
+    "./utils/distance.js": {
+      "import": "./dist/utils/distance.js",
+      "require": "./dist/utils/distance.js",
+      "types": "./dist/utils/distance.d.ts"
     }
   },
   "scripts": {
