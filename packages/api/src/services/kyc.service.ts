@@ -23,6 +23,7 @@ type DocType =
   | 'selfie'
   | 'insurance_policy'
   | 'equipment'
+  | 'completion_photo'
 
 /**
  * Upload a base64-encoded image (or a file path) to Cloudinary.

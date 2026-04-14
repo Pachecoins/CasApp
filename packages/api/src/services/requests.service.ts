@@ -1,4 +1,5 @@
 import { prisma } from '../config/prisma.js'
+import { type Prisma } from '@prisma/client'
 import { calculateQuote } from '@casapp/shared/utils/price.js'
 import { io } from '../index.js'
 import {
@@ -58,7 +59,7 @@ export async function createRequest(params: CreateRequestParams) {
       basePricePremium: category.basePricePremium,
       pricePerM2Standard: category.pricePerM2Standard,
       pricePerM2Premium: category.pricePerM2Premium,
-      addonDefinitions: category.addonDefinitions as never,
+      addonDefinitions: category.addonDefinitions as import('@casapp/shared').AddonDefinition[],
     },
     {
       lotSize,
@@ -300,7 +301,7 @@ export async function updateRequestStatus(
     throw new Error('Se requiere la foto del trabajo terminado para finalizar')
   }
 
-  const updateData: Record<string, unknown> = { status: newStatus }
+  const updateData: Prisma.ServiceRequestUpdateInput = { status: newStatus }
   if (newStatus === 'FINISHED_PENDING_APPROVAL') {
     updateData.completionPhotoUrl = extras!.completionPhotoUrl
     updateData.finishedAt = new Date()
@@ -308,7 +309,7 @@ export async function updateRequestStatus(
 
   const updated = await prisma.serviceRequest.update({
     where: { id: requestId },
-    data: updateData as never,
+    data: updateData,
     include: { category: true, worker: true, client: true },
   })
 

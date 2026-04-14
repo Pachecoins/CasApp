@@ -1,4 +1,5 @@
 import { prisma } from '../config/prisma.js'
+import { type TransactionStatus } from '@prisma/client'
 import { mpPreferenceClient, mpPaymentClient, isMPConfigured } from '../config/mercadopago.js'
 import { env } from '../config/env.js'
 import { startMatchingAfterPayment } from './requests.service.js'
@@ -151,7 +152,7 @@ export async function processWebhook(topic: string, resourceId: string, rawBody:
   const [requestId, transactionId] = externalRef.split('::')
   if (!requestId || !transactionId) return { ignored: true }
 
-  const txStatus =
+  const txStatus: TransactionStatus =
     paymentData.status === 'approved' ? 'APPROVED'
     : paymentData.status === 'rejected' ? 'REJECTED'
     : 'PENDING'
@@ -159,7 +160,7 @@ export async function processWebhook(topic: string, resourceId: string, rawBody:
   await prisma.transaction.update({
     where: { id: transactionId },
     data: {
-      status: txStatus as never,
+      status: txStatus,
       mpPaymentId: String(paymentData.id),
       rawWebhookData: rawBody as object,
     },

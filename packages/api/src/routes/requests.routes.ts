@@ -92,7 +92,7 @@ router.patch('/:id/status', authenticate, async (req: AuthRequest, res) => {
         completionPhotoUrl = await uploadDocument(
           result.data.completionPhotoBase64,
           workerProfile.id,
-          'completion_photo' as never,
+          'completion_photo',
         )
       }
     }
@@ -250,16 +250,5 @@ clientRequestsRouter.get('/me/requests', authenticate, requireRole('CLIENT'), as
     return sendError(res, message, 400)
   }
 })
-
-// GET /api/workers/me/requests  (montado en /api/workers — ya existe el router, se re-exporta aquí)
-export const workerRequestsHandler = async (req: AuthRequest, res: ReturnType<typeof res>) => {
-  try {
-    const requests = await requestsService.getWorkerRequests(req.user!.userId)
-    return sendSuccess(res as never, requests)
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Error'
-    return sendError(res as never, message, 400)
-  }
-}
 
 export default router
