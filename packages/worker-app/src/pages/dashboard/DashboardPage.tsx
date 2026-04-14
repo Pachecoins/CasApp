@@ -46,6 +46,10 @@ export function DashboardPage() {
   const [todayEarnings, setTodayEarnings]   = useState<number | null>(null)
   const [todayJobs, setTodayJobs]           = useState<number | null>(null)
   const [rating, setRating]                 = useState<number | null>(null)
+  const [upcomingJobs, setUpcomingJobs]     = useState<Array<{
+    id: string; scheduledAt: string; address: string; quotedPrice?: number
+    status: string; category: { name: string; slug: string }
+  }>>([])
 
   // Mission feed
   const [availableJobs, setAvailableJobs]   = useState<AvailableJob[]>([])
@@ -60,6 +64,7 @@ export function DashboardPage() {
       setTodayEarnings(d.todayEarnings)
       setTodayJobs(d.todayJobsCount)
       setRating(d.rating)
+      setUpcomingJobs(d.upcomingRequests)
     }).catch(() => {})
   }, [])
 
@@ -314,10 +319,40 @@ export function DashboardPage() {
         {/* ── Upcoming scheduled ── */}
         <div>
           <h2 className="text-lg font-heading font-bold text-gray-900 mb-3">Próximos programados</h2>
-          <div className="card text-center py-6">
-            <Calendar size={32} className="mx-auto text-gray-300 mb-2" />
-            <p className="text-gray-500 text-sm">No tenés trabajos programados</p>
-          </div>
+          {upcomingJobs.length === 0 ? (
+            <div className="card text-center py-6">
+              <Calendar size={32} className="mx-auto text-gray-300 mb-2" />
+              <p className="text-gray-500 text-sm">No tenés trabajos programados</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {upcomingJobs.map((job) => (
+                <button
+                  key={job.id}
+                  onClick={() => navigate(`/requests/${job.id}`)}
+                  className="w-full card flex items-center gap-3 text-left"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-lg flex-shrink-0">
+                    📅
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-gray-900">{job.category.name}</p>
+                    <p className="text-xs text-gray-500 truncate">{job.address}</p>
+                    <p className="text-xs text-blue-600 font-medium mt-0.5">
+                      {new Date(job.scheduledAt).toLocaleDateString('es-AR', {
+                        weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                      })}
+                    </p>
+                  </div>
+                  {job.quotedPrice && (
+                    <p className="text-sm font-bold text-primary flex-shrink-0">
+                      {formatPrice(Math.round(job.quotedPrice / 1.15))}
+                    </p>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

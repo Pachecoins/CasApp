@@ -55,7 +55,14 @@ export const workerRequestsService = {
       todayJobsCount: number
       rating: number
       activeRequests: unknown[]
-      upcomingRequests: unknown[]
+      upcomingRequests: Array<{
+        id: string
+        scheduledAt: string
+        address: string
+        quotedPrice?: number
+        status: string
+        category: { name: string; slug: string }
+      }>
     }
   },
 
