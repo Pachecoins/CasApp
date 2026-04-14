@@ -5,6 +5,7 @@ import { RegisterPage } from './pages/auth/RegisterPage'
 import { DashboardPage } from './pages/dashboard/DashboardPage'
 import { IncomingRequestPage } from './pages/requests/IncomingRequestPage'
 import { JobDetailPage } from './pages/requests/JobDetailPage'
+import { JobsPage } from './pages/requests/JobsPage'
 import { EarningsPage } from './pages/earnings/EarningsPage'
 import { ProfilePage } from './pages/profile/ProfilePage'
 import { WorkerOnboardingPage, shouldShowWorkerOnboarding } from './pages/onboarding/OnboardingPage'
@@ -44,6 +45,7 @@ export default function App() {
 
         <Route path="/onboarding" element={<WorkerOnboardingPage />} />
         <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+        <Route path="/jobs" element={<ProtectedRoute><JobsPage /></ProtectedRoute>} />
         <Route path="/earnings" element={<ProtectedRoute><EarningsPage /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
 
