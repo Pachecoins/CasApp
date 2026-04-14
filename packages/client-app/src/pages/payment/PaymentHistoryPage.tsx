@@ -13,7 +13,7 @@ interface TransactionItem {
   createdAt: string
   serviceRequest: {
     id: string
-    type: string
+    scheduledAt?: string | null
     address: string
     category: { name: string; slug: string }
     worker?: {
@@ -29,11 +29,6 @@ const STATUS_CONFIG: Record<TransactionItem['status'], { label: string; icon: Re
   REFUNDED: { label: 'Reembolsado', icon: <Receipt size={14} />, color: 'text-blue-500', bg: 'bg-blue-50' },
 }
 
-const TYPE_EMOJIS: Record<string, string> = {
-  ON_DEMAND: '⚡',
-  SCHEDULED: '📅',
-  SUBSCRIPTION: '🔄',
-}
 
 export function PaymentHistoryPage() {
   const navigate = useNavigate()
@@ -106,7 +101,7 @@ export function PaymentHistoryPage() {
               >
                 {/* Category icon */}
                 <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">
-                  {TYPE_EMOJIS[tx.serviceRequest.type] ?? '🏠'}
+                  {tx.serviceRequest.scheduledAt ? '📅' : '⚡'}
                 </div>
 
                 {/* Info */}
