@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -33,14 +33,28 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>
 
+interface LocationState {
+  categoryId?: string
+  address?: string
+  latitude?: number
+  longitude?: number
+  description?: string
+}
+
 export function NewSubscriptionPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const preselectedCategoryId = searchParams.get('categoryId') ?? ''
+  const location = useLocation()
+  const locationState = (location.state ?? {}) as LocationState
+
+  const preselectedCategoryId = locationState.categoryId ?? searchParams.get('categoryId') ?? ''
+  const prefilledAddress = locationState.address ?? ''
+  const prefilledLat = locationState.latitude
+  const prefilledLng = locationState.longitude
 
   const [categories, setCategories] = useState<ServiceCategory[]>([])
   const [loading, setLoading] = useState(false)
-  const [step, setStep] = useState(1) // 1: service, 2: schedule, 3: confirm
+  const [step, setStep] = useState(preselectedCategoryId ? 2 : 1) // skip step 1 if category pre-selected
 
   const {
     register,
@@ -56,7 +70,7 @@ export function NewSubscriptionPage() {
       frequency: 'WEEKLY',
       dayOfWeek: 1, // Monday
       timeSlot: '09:00',
-      address: '',
+      address: prefilledAddress,
       preferSameWorker: true,
     },
   })
@@ -82,18 +96,24 @@ export function NewSubscriptionPage() {
   const onSubmit = async (data: FormData) => {
     setLoading(true)
     try {
-      // Get lat/lng from browser geolocation (fallback to Buenos Aires center)
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
-      }).catch(() => null)
+      let latitude = prefilledLat
+      let longitude = prefilledLng
 
-      const latitude = position?.coords.latitude ?? -34.6037
-      const longitude = position?.coords.longitude ?? -58.3816
+      // Fall back to browser geolocation if no pre-filled coords
+      if (!latitude || !longitude) {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+        }).catch(() => null)
+
+        latitude = position?.coords.latitude ?? -34.6037
+        longitude = position?.coords.longitude ?? -58.3816
+      }
 
       await subscriptionsService.create({
         ...data,
         latitude,
         longitude,
+        description: locationState.description,
       })
       navigate('/subscriptions', { replace: true })
     } catch (err) {

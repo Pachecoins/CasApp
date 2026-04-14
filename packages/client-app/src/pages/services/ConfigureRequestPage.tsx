@@ -161,24 +161,15 @@ export function ConfigureRequestPage() {
         })
         navigate(`/requests/${request.id}/checkout`)
       } else {
-        // SUBSCRIPTION — pass quoting params to the confirm page
-        navigate('/subscriptions/new/confirm', {
+        // SUBSCRIPTION — hand off to the subscription wizard with pre-filled state
+        navigate('/subscriptions/new', {
           state: {
             categoryId:      category.id,
             categoryName:    category.name,
-            address:         data.address,
+            address:         data.address as string,
             latitude:        lat,
             longitude:       lng,
-            description:     data.description,
-            frequency,
-            dayOfWeek:       selectedDay,
-            timeSlot,
-            preferSameWorker,
-            pricePerVisit:   quote.total,
-            lotSize,
-            lotAreaM2:       cleanM2,
-            equipmentTier,
-            addons:          selectedAddons,
+            description:     data.description as string | undefined,
           },
         })
       }

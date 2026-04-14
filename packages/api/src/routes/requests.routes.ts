@@ -36,7 +36,7 @@ router.post('/', authenticate, requireRole('CLIENT', 'ADMIN'), async (req: AuthR
   try {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { type: _type, estimatedDuration: _dur, ...requestData } = result.data
-    const request = await requestsService.createRequest({
+    const { request } = await requestsService.createRequest({
       clientUserId: req.user!.userId,
       ...requestData,
     })
