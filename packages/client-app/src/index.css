@@ -6,10 +6,6 @@
 @import 'leaflet/dist/leaflet.css';
 
 @layer base {
-  * {
-    @apply border-border;
-  }
-
   body {
     @apply bg-background text-gray-900 font-body antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
