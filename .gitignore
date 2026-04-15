@@ -7,3 +7,4 @@ coverage/
 .turbo/
 *.log
 prisma/migrations/
+packages/shared/tsconfig.tsbuildinfo
