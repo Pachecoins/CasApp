@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-base: #0e0e0e;
+  --color-military: #3d4a2a;
+  --color-sand: #c9b98e;
+  --color-bone: #f2efe8;
+  --font-stencil: var(--font-stardos), "Stardos Stencil", serif;
+  --font-ui: var(--font-inter), "Inter", sans-serif;
+}
+
+:root {
+  --background: #0e0e0e;
+  --foreground: #f2efe8;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-ui);
+}
