@@ -84,6 +84,18 @@ export function EquipmentManagePage() {
       </div>
 
       <div className="px-4 pt-6">
+        <button
+          onClick={() => navigate('/productos')}
+          className="w-full card flex items-center gap-3 mb-6 text-left"
+        >
+          <div className="w-10 h-10 rounded-xl bg-accent-50 flex items-center justify-center text-xl flex-shrink-0">
+            ♻️
+          </div>
+          <div>
+            <p className="font-medium text-sm text-gray-800">Vender productos reciclados</p>
+            <p className="text-xs text-gray-500">Briquetas, abono y más → Mis productos</p>
+          </div>
+        </button>
         {loading ? (
           <div className="card animate-pulse h-20 bg-gray-100" />
         ) : items.length === 0 ? (

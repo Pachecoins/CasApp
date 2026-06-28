@@ -172,6 +172,20 @@ export function HomePage() {
           </div>
         </button>
 
+        {/* Recycled products marketplace banner */}
+        <button
+          onClick={() => navigate('/marketplace')}
+          className="w-full bg-white border-2 border-accent-200 rounded-2xl p-4 mb-6 flex items-center gap-3 text-left hover:shadow-card-hover transition-all active:scale-[0.98]"
+        >
+          <div className="w-12 h-12 rounded-xl bg-accent-50 flex items-center justify-center text-2xl flex-shrink-0">
+            ♻️
+          </div>
+          <div className="flex-1">
+            <p className="font-heading font-bold text-sm text-gray-800">Productos reciclados</p>
+            <p className="text-gray-500 text-xs">Briquetas y más, hechos por los Tukis</p>
+          </div>
+        </button>
+
         {/* Booking mode toggle */}
         <div className="mb-6">
           <div className="grid grid-cols-3 gap-3">

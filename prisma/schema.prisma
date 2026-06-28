@@ -89,6 +89,13 @@ enum TransactionStatus {
   REFUNDED
 }
 
+enum ProductOrderStatus {
+  PENDING
+  CONFIRMED
+  DELIVERED
+  CANCELLED
+}
+
 enum EquipmentRentalStatus {
   PENDING   // requested by client, awaiting owner confirmation
   CONFIRMED // owner confirmed, awaiting start date
@@ -128,6 +135,7 @@ model User {
   chatMessages      ChatMessage[]
   pushSubscriptions PushSubscription[]
   equipmentRentals  EquipmentRental[]
+  productOrders     ProductOrder[]
 
   @@index([email])
   @@map("users")
@@ -209,6 +217,7 @@ model WorkerProfile {
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   workerServices WorkerService[]
   equipment      WorkerEquipment[]
+  products       WorkerProduct[]
   serviceRequests ServiceRequest[]
   subscriptions  Subscription[]
 
@@ -260,6 +269,48 @@ model EquipmentRental {
   @@index([equipmentId])
   @@index([renterId])
   @@map("equipment_rentals")
+}
+
+// ─── PRODUCTS MARKETPLACE ──────────────────────────────────────────────────────
+// Workers sell self-made / recycled products (e.g. firewood briquettes made
+// from leaves collected on gardening jobs) alongside their regular services.
+
+model WorkerProduct {
+  id          String   @id @default(cuid())
+  workerId    String
+  name        String   // "Briquetas de carbón ecológico (hojas recicladas)"
+  description String?
+  photoUrl    String
+  priceCents  Int
+  stock       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  worker WorkerProfile  @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  orders ProductOrder[]
+
+  @@index([workerId])
+  @@index([isActive])
+  @@map("worker_products")
+}
+
+model ProductOrder {
+  id              String             @id @default(cuid())
+  productId       String
+  buyerId         String
+  quantity        Int
+  totalPriceCents Int
+  status          ProductOrderStatus @default(PENDING)
+  paymentStatus   PaymentStatus      @default(PENDING)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  product WorkerProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  buyer   User          @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([buyerId])
+  @@map("product_orders")
 }
 
 // ─── SERVICES ────────────────────────────────────────────────────────────────

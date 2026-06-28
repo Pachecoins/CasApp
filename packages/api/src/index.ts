@@ -23,6 +23,7 @@ import notificationsRoutes from './routes/notifications.routes.js'
 import adminRoutes from './routes/admin.routes.js'
 import assistantRoutes from './routes/assistant.routes.js'
 import equipmentRoutes from './routes/equipment.routes.js'
+import productsRoutes from './routes/products.routes.js'
 import { generateScheduledRequests } from './services/subscriptions.service.js'
 import { autoReleaseOverdueOrders } from './services/escrow.service.js'
 import cron from 'node-cron'
@@ -121,6 +122,7 @@ app.use('/api/notifications', notificationsRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/assistant', assistantRoutes)
 app.use('/api/equipment', equipmentRoutes)
+app.use('/api/products', productsRoutes)
 
 app.use((_req, res) => res.status(404).json({ success: false, error: 'Route not found' }))
 app.use(errorHandler)
