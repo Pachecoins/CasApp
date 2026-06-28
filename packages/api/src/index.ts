@@ -124,7 +124,7 @@ app.use(errorHandler)
 // ─── Start ────────────────────────────────────────────────────────────────────
 httpServer.listen(env.PORT, () => {
   console.log(`
-🏠 CasApp API running!
+🏠 Tuki API running!
    → http://localhost:${env.PORT}
    → Environment: ${env.NODE_ENV}
    → Health: http://localhost:${env.PORT}/health

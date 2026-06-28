@@ -93,7 +93,7 @@ export function RegisterPage() {
       <div className="bg-primary px-6 pt-10 pb-6 text-white">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-xl">🏠</div>
-          <span className="text-xl font-heading font-bold">CasApp <span className="text-accent">Pro</span></span>
+          <span className="text-xl font-heading font-bold">Tuki <span className="text-accent">Pro</span></span>
         </div>
 
         {/* Step indicators */}

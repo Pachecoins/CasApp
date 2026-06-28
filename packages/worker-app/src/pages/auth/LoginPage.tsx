@@ -48,7 +48,7 @@ export function LoginPage() {
           </div>
           <div>
             <div className="text-2xl font-heading font-bold">
-              CasApp <span className="text-accent">Pro</span>
+              Tuki <span className="text-accent">Pro</span>
             </div>
             <div className="text-primary-100 text-xs">Para profesionales del hogar</div>
           </div>

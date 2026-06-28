@@ -136,7 +136,7 @@ export function LoginPage() {
               href={import.meta.env.VITE_WORKER_APP_URL || 'http://localhost:5174'}
               className="text-secondary font-semibold hover:text-secondary-600 transition-colors"
             >
-              Accedé a CasApp Pro →
+              Accedé a Tuki Pro →
             </a>
           </p>
         </div>

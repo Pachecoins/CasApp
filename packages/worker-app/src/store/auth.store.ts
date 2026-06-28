@@ -42,7 +42,7 @@ export const useAuthStore = create<AuthState>()(
           const { user, accessToken, refreshToken } = data.data
 
           if (user.role !== 'WORKER' && user.role !== 'ADMIN') {
-            throw new Error('Esta cuenta no es de profesional. Usá la app CasApp Cliente.')
+            throw new Error('Esta cuenta no es de profesional. Usá la app Tuki Cliente.')
           }
 
           localStorage.setItem('casapp_pro_token', accessToken)

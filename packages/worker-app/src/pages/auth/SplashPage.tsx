@@ -21,7 +21,7 @@ export function SplashPage() {
         </div>
         <div className="text-center">
           <h1 className="text-5xl font-heading font-bold text-white">
-            CasApp <span className="text-accent">Pro</span>
+            Tuki <span className="text-accent">Pro</span>
           </h1>
           <p className="text-primary-100 mt-2 text-lg">Trabajá cuando quieras, donde quieras</p>
         </div>
