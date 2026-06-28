@@ -10,6 +10,7 @@ import { EarningsPage } from './pages/earnings/EarningsPage'
 import { ProfilePage } from './pages/profile/ProfilePage'
 import { EquipmentManagePage } from './pages/equipment/EquipmentManagePage'
 import { ProductsManagePage } from './pages/products/ProductsManagePage'
+import { CoursesPage } from './pages/courses/CoursesPage'
 import WorkerOnboardingPage, { shouldShowWorkerOnboarding } from './pages/onboarding/OnboardingPage'
 import { useAuthStore } from './store/auth.store'
 import { usePushNotifications } from './hooks/usePushNotifications'
@@ -63,6 +64,7 @@ function AppRoutes() {
         <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
         <Route path="/equipos" element={<ProtectedRoute><EquipmentManagePage /></ProtectedRoute>} />
         <Route path="/productos" element={<ProtectedRoute><ProductsManagePage /></ProtectedRoute>} />
+        <Route path="/cursos" element={<ProtectedRoute><CoursesPage /></ProtectedRoute>} />
 
         {/* Incoming request (from socket notification) */}
         <Route

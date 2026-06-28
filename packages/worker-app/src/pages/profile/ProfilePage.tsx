@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Star, Camera, Edit3, Plus, Trash2,
-  CheckCircle, Shield, Award, ChevronDown, X,
+  CheckCircle, Shield, Award, ChevronDown, X, GraduationCap,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { api } from '@/lib/api'
@@ -250,6 +250,20 @@ export function ProfilePage() {
             <p className="text-xs text-gray-400 mt-0.5">Radio</p>
           </div>
         </div>
+
+        {/* Courses */}
+        <button
+          onClick={() => navigate('/cursos')}
+          className="w-full bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3 text-left"
+        >
+          <div className="w-10 h-10 rounded-xl bg-accent-50 flex items-center justify-center flex-shrink-0">
+            <GraduationCap size={20} className="text-accent-600" />
+          </div>
+          <div className="flex-1">
+            <p className="font-medium text-sm text-gray-800">Cursos para Tukis</p>
+            <p className="text-xs text-gray-500">Capacitate y mejorá tu servicio. Gratis si tenés buena calificación.</p>
+          </div>
+        </button>
 
         {/* Bio */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">

@@ -288,4 +288,59 @@ router.get('/users', async (req: AuthRequest, res) => {
   }
 })
 
+// ─── COURSES CATALOG ─────────────────────────────────────────────────────────
+
+// GET /api/admin/courses
+router.get('/courses', async (_req, res) => {
+  try {
+    const courses = await prisma.course.findMany({ orderBy: { createdAt: 'desc' } })
+    return sendSuccess(res, courses)
+  } catch (err) {
+    return sendError(res, err instanceof Error ? err.message : 'Error', 500)
+  }
+})
+
+// POST /api/admin/courses
+router.post('/courses', async (req, res) => {
+  const schema = z.object({
+    title: z.string().min(2).max(120),
+    description: z.string().max(500).optional(),
+    thumbnailUrl: z.string().url().optional(),
+    contentUrl: z.string().url().optional(),
+    priceCents: z.number().int().min(0).default(0),
+    freeAboveRating: z.number().min(0).max(5).optional(),
+  })
+  const result = schema.safeParse(req.body)
+  if (!result.success) return sendError(res, 'Datos del curso inválidos', 422, result.error.flatten())
+
+  try {
+    const course = await prisma.course.create({ data: result.data })
+    return sendSuccess(res, course, 201)
+  } catch (err) {
+    return sendError(res, err instanceof Error ? err.message : 'Error al crear curso', 400)
+  }
+})
+
+// PATCH /api/admin/courses/:id
+router.patch('/courses/:id', async (req, res) => {
+  const schema = z.object({
+    title: z.string().min(2).max(120).optional(),
+    description: z.string().max(500).optional(),
+    thumbnailUrl: z.string().url().optional(),
+    contentUrl: z.string().url().optional(),
+    priceCents: z.number().int().min(0).optional(),
+    freeAboveRating: z.number().min(0).max(5).nullable().optional(),
+    isActive: z.boolean().optional(),
+  })
+  const result = schema.safeParse(req.body)
+  if (!result.success) return sendError(res, 'Datos inválidos', 422)
+
+  try {
+    const course = await prisma.course.update({ where: { id: req.params.id }, data: result.data })
+    return sendSuccess(res, course)
+  } catch (err) {
+    return sendError(res, err instanceof Error ? err.message : 'Error', 400)
+  }
+})
+
 export default router

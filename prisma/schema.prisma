@@ -104,6 +104,13 @@ enum EquipmentRentalStatus {
   CANCELLED
 }
 
+enum CourseEnrollmentStatus {
+  PENDING    // enrolled, payment (if any) not yet confirmed
+  ACTIVE     // payment confirmed (or free) — worker has access
+  COMPLETED
+  CANCELLED
+}
+
 // Qualitative review tags ("Puntual", "Honesto", "Prolijo", ...)
 enum ReviewTag {
   PUNCTUAL     // Puntual
@@ -220,6 +227,7 @@ model WorkerProfile {
   products       WorkerProduct[]
   serviceRequests ServiceRequest[]
   subscriptions  Subscription[]
+  courseEnrollments CourseEnrollment[]
 
   @@index([isAvailable, currentLatitude, currentLongitude])
   @@map("worker_profiles")
@@ -311,6 +319,46 @@ model ProductOrder {
   @@index([productId])
   @@index([buyerId])
   @@map("product_orders")
+}
+
+// ─── COURSES (admin-managed catalog, "para trabajadores") ──────────────────────
+// Workers browse a platform catalog of courses. Highly-rated workers
+// (rating >= freeAboveRating) get free access; everyone else pays.
+
+model Course {
+  id              String   @id @default(cuid())
+  title           String
+  description     String?
+  thumbnailUrl    String?
+  contentUrl      String?  // video/lesson content link
+  priceCents      Int      @default(0)
+  // Workers with rating >= this threshold enroll for free. Null = never free.
+  freeAboveRating Float?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  enrollments CourseEnrollment[]
+
+  @@index([isActive])
+  @@map("courses")
+}
+
+model CourseEnrollment {
+  id            String                 @id @default(cuid())
+  courseId      String
+  workerId      String
+  isFree        Boolean                @default(false)
+  status        CourseEnrollmentStatus @default(PENDING)
+  paymentStatus PaymentStatus          @default(PENDING)
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  course Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  worker WorkerProfile @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, workerId])
+  @@index([workerId])
+  @@map("course_enrollments")
 }
 
 // ─── SERVICES ────────────────────────────────────────────────────────────────
