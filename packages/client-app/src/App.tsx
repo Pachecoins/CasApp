@@ -3,6 +3,7 @@ import { SplashPage } from './pages/auth/SplashPage'
 import { LoginPage } from './pages/auth/LoginPage'
 import { RegisterPage } from './pages/auth/RegisterPage'
 import { HomePage } from './pages/home/HomePage'
+import { AskTukiPage } from './pages/assistant/AskTukiPage'
 import { CategoryModalityPage } from './pages/services/CategoryModalityPage'
 import { ConfigureRequestPage } from './pages/services/ConfigureRequestPage'
 import { SearchingPage } from './pages/requests/SearchingPage'
@@ -56,6 +57,7 @@ export default function App() {
 
         <Route path="/onboarding" element={<OnboardingPage />} />
         <Route path="/home" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+        <Route path="/asistente" element={<ProtectedRoute><AskTukiPage /></ProtectedRoute>} />
 
         {/* Service flow */}
         <Route path="/services/:slug" element={<ProtectedRoute><CategoryModalityPage /></ProtectedRoute>} />
