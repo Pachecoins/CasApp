@@ -10,9 +10,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'icon-192.png', 'icon-512.png', 'badge-72.png'],
       manifest: {
-        name: 'CasApp — Servicios del Hogar',
-        short_name: 'CasApp',
-        description: 'Servicios del hogar on-demand: jardinería, limpieza, plomería y más',
+        name: 'Tuki — Servicios del Hogar',
+        short_name: 'Tuki',
+        description: 'Servicios del hogar on-demand: jardinería, piletas, limpieza, plomería y más',
         theme_color: '#2D6A4F',
         background_color: '#FAFAF8',
         display: 'standalone',

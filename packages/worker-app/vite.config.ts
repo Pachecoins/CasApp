@@ -10,8 +10,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'icon-192.png', 'icon-512.png', 'badge-72.png'],
       manifest: {
-        name: 'CasApp Pro — Panel de Profesionales',
-        short_name: 'CasApp Pro',
+        name: 'Tuki Pro — Panel de Profesionales',
+        short_name: 'Tuki Pro',
         description: 'Gestioná tus servicios del hogar, pedidos y ganancias',
         theme_color: '#2D6A4F',
         background_color: '#FAFAF8',
