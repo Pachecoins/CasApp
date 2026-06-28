@@ -236,10 +236,15 @@ export async function resolveDisputeForClient(params: {
 
   const tx = await prisma.transaction.findFirst({
     where: { serviceRequestId, escrowStatus: 'FROZEN' },
-    select: { id: true },
+    select: { id: true, mpPaymentId: true },
   })
 
   if (!tx) throw new Error(`No frozen transaction for request ${serviceRequestId}`)
+
+  // Issue the refund via MP before flipping our own records, so a gateway
+  // failure doesn't leave us thinking money moved when it didn't.
+  const { refundPayment } = await import('./payments.service.js')
+  await refundPayment(tx.mpPaymentId)
 
   await prisma.$transaction([
     prisma.transaction.update({
@@ -263,9 +268,6 @@ export async function resolveDisputeForClient(params: {
       },
     }),
   ])
-
-  // TODO: initiate actual refund via MercadoPago/Stripe SDK
-  // await paymentsService.refund(tx.mpPaymentId)
 }
 
 // ─── AUTO-RELEASE (24h cron) ─────────────────────────────────────────────────
@@ -305,28 +307,65 @@ export async function autoReleaseOverdueOrders(): Promise<void> {
 // ─── WALLET WITHDRAWAL ───────────────────────────────────────────────────────
 
 /**
- * Deduct from the worker's wallet balance when they initiate a withdrawal.
- * The actual bank transfer is handled by the payment gateway integration.
+ * Deduct from the worker's wallet balance and queue a WithdrawalRequest for
+ * an admin to pay out manually (bank transfer outside the app, then marked
+ * PAID — see WithdrawalRequest doc comment in schema.prisma).
  */
 export async function deductWalletForWithdrawal(
   workerId: string,
   amountCents: number,
-): Promise<void> {
+) {
   const worker = await prisma.workerProfile.findUnique({
     where: { id: workerId },
-    select: { walletBalanceCents: true, bankAccountVerified: true },
+    select: { walletBalanceCents: true, bankAccountVerified: true, bankCvu: true },
   })
 
   if (!worker) throw new Error('Worker not found')
-  if (!worker.bankAccountVerified) {
+  if (!worker.bankAccountVerified || !worker.bankCvu) {
     throw new Error('Bank account must be verified before withdrawal')
   }
   if (worker.walletBalanceCents < amountCents) {
     throw new Error('Insufficient wallet balance')
   }
 
-  await prisma.workerProfile.update({
-    where: { id: workerId },
-    data: { walletBalanceCents: { decrement: amountCents } },
-  })
+  const [, withdrawal] = await prisma.$transaction([
+    prisma.workerProfile.update({
+      where: { id: workerId },
+      data: { walletBalanceCents: { decrement: amountCents } },
+    }),
+    prisma.withdrawalRequest.create({
+      data: { workerId, amountCents, bankCvu: worker.bankCvu },
+    }),
+  ])
+
+  return withdrawal
+}
+
+/**
+ * Admin marks a withdrawal as paid (after transferring the funds manually) or
+ * rejected (credits the wallet back).
+ */
+export async function resolveWithdrawal(
+  withdrawalId: string,
+  status: 'PAID' | 'REJECTED',
+  adminNote?: string,
+): Promise<void> {
+  const withdrawal = await prisma.withdrawalRequest.findUnique({ where: { id: withdrawalId } })
+  if (!withdrawal) throw new Error('Retiro no encontrado')
+  if (withdrawal.status !== 'PENDING') throw new Error('Este retiro ya fue procesado')
+
+  await prisma.$transaction([
+    prisma.withdrawalRequest.update({
+      where: { id: withdrawalId },
+      data: { status, adminNote, processedAt: new Date() },
+    }),
+    ...(status === 'REJECTED'
+      ? [
+          prisma.workerProfile.update({
+            where: { id: withdrawal.workerId },
+            data: { walletBalanceCents: { increment: withdrawal.amountCents } },
+          }),
+        ]
+      : []),
+  ])
 }

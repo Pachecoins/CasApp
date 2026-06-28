@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import {
   Users, Briefcase, DollarSign, RefreshCw,
   Shield, CheckCircle, XCircle, Search, ChevronLeft, ChevronRight,
-  BarChart2, TrendingUp,
+  BarChart2, TrendingUp, Banknote,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { formatPrice } from '@/lib/utils'
 
-type AdminTab = 'overview' | 'workers' | 'kyc' | 'disputes' | 'transactions' | 'users'
+type AdminTab = 'overview' | 'workers' | 'kyc' | 'disputes' | 'withdrawals' | 'transactions' | 'users'
 
 interface Stats {
   users: { total: number; workers: number; clients: number; pendingVerifications: number }
@@ -77,6 +77,15 @@ interface DisputeItem {
   }
 }
 
+interface WithdrawalItem {
+  id: string
+  amountCents: number
+  bankCvu: string
+  status: 'PENDING' | 'PAID' | 'REJECTED'
+  requestedAt: string
+  worker: { user: { firstName: string; lastName: string; email: string } }
+}
+
 interface KycWorkerItem {
   id: string
   kycStatus: string
@@ -86,6 +95,8 @@ interface KycWorkerItem {
   selfieBiometricUrl?: string
   insurancePolicyUrl?: string
   insuranceVerified: boolean
+  bankCvu?: string
+  bankAccountVerified: boolean
   user: { id: string; firstName: string; lastName: string; email: string }
 }
 
@@ -123,6 +134,10 @@ export function AdminDashboardPage() {
   const [disputeResolution, setDisputeResolution] = useState<Record<string, string>>({})
   const [resolvingDispute, setResolvingDispute] = useState<string | null>(null)
 
+  // Withdrawals tab
+  const [withdrawals, setWithdrawals] = useState<WithdrawalItem[]>([])
+  const [resolvingWithdrawal, setResolvingWithdrawal] = useState<string | null>(null)
+
   // Redirect if not admin
   useEffect(() => {
     if (user && user.role !== 'ADMIN') navigate('/home', { replace: true })
@@ -144,6 +159,10 @@ export function AdminDashboardPage() {
     } else if (tab === 'disputes') {
       api.get('/admin/disputes')
         .then((r) => setDisputes(r.data.data))
+        .catch(console.error)
+    } else if (tab === 'withdrawals') {
+      api.get('/admin/withdrawals?status=PENDING')
+        .then((r) => setWithdrawals(r.data.data))
         .catch(console.error)
     } else if (tab === 'transactions') {
       api.get(`/admin/transactions?page=${page}`)
@@ -177,9 +196,21 @@ export function AdminDashboardPage() {
     }
   }
 
+  const handleResolveWithdrawal = async (withdrawalId: string, status: 'PAID' | 'REJECTED') => {
+    setResolvingWithdrawal(withdrawalId)
+    try {
+      await api.patch(`/admin/withdrawals/${withdrawalId}`, { status })
+      setWithdrawals((prev) => prev.filter((w) => w.id !== withdrawalId))
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setResolvingWithdrawal(null)
+    }
+  }
+
   const handleKycAction = async (
     workerId: string,
-    action: 'approve-kyc' | 'approve-insurance' | 'reject-insurance',
+    action: 'approve-kyc' | 'approve-insurance' | 'reject-insurance' | 'verify-bank',
   ) => {
     setKycActioning(workerId)
     try {
@@ -231,7 +262,7 @@ export function AdminDashboardPage() {
 
         {/* Tabs */}
         <div className="flex gap-1 overflow-x-auto pb-0.5">
-          {(['overview', 'workers', 'kyc', 'disputes', 'transactions', 'users'] as AdminTab[]).map((t) => (
+          {(['overview', 'workers', 'kyc', 'disputes', 'withdrawals', 'transactions', 'users'] as AdminTab[]).map((t) => (
             <button
               key={t}
               onClick={() => { setTab(t); setPage(1) }}
@@ -243,6 +274,7 @@ export function AdminDashboardPage() {
                t === 'workers'    ? 'Trabajadores' :
                t === 'kyc'        ? `KYC${kycWorkers.length > 0 ? ` (${kycWorkers.length})` : ''}` :
                t === 'disputes'   ? `Disputas${disputes.filter(d => !d.resolvedAt).length > 0 ? ` (${disputes.filter(d => !d.resolvedAt).length})` : ''}` :
+               t === 'withdrawals' ? `Retiros${withdrawals.length > 0 ? ` (${withdrawals.length})` : ''}` :
                t === 'transactions' ? 'Pagos' : 'Usuarios'}
             </button>
           ))}
@@ -322,6 +354,7 @@ export function AdminDashboardPage() {
               kycWorkers.map((worker) => {
                 const hasIdentityPending = worker.kycStatus === 'SUBMITTED' && !worker.identityVerified
                 const hasInsurancePending = !!worker.insurancePolicyUrl && !worker.insuranceVerified
+                const hasBankPending = !!worker.bankCvu && !worker.bankAccountVerified
                 const isActioning = kycActioning === worker.id
 
                 return (
@@ -425,6 +458,28 @@ export function AdminDashboardPage() {
                         </div>
                       </div>
                     )}
+
+                    {/* Bank account section */}
+                    {hasBankPending && (
+                      <div className="border border-green-200 rounded-xl p-3 bg-green-50">
+                        <p className="text-sm font-semibold text-green-800 mb-2">
+                          🏦 Cuenta bancaria (CVU/CBU) — pendiente
+                        </p>
+                        <p className="text-xs text-green-700 mb-3 font-mono">{worker.bankCvu}</p>
+                        <button
+                          disabled={isActioning}
+                          onClick={() => handleKycAction(worker.id, 'verify-bank')}
+                          className="w-full flex items-center justify-center gap-1 bg-green-600 text-white text-sm font-medium py-2 rounded-xl disabled:opacity-50"
+                        >
+                          {isActioning ? (
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <CheckCircle size={14} />
+                          )}
+                          Verificar cuenta
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )
               })
@@ -505,6 +560,60 @@ export function AdminDashboardPage() {
                         </div>
                       </div>
                     )}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )}
+
+        {/* ── Withdrawals ── */}
+        {tab === 'withdrawals' && (
+          <div className="space-y-3">
+            {withdrawals.length === 0 ? (
+              <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
+                <div className="text-4xl mb-3">💸</div>
+                <p className="text-gray-600 font-medium">Sin retiros pendientes</p>
+              </div>
+            ) : (
+              withdrawals.map((w) => {
+                const isResolving = resolvingWithdrawal === w.id
+                return (
+                  <div key={w.id} className="bg-white rounded-2xl p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div>
+                        <p className="font-semibold text-gray-900 text-sm">
+                          {w.worker.user.firstName} {w.worker.user.lastName}
+                        </p>
+                        <p className="text-xs text-gray-500">{w.worker.user.email}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">CVU/CBU: {w.bankCvu}</p>
+                        <p className="text-xs text-gray-400">
+                          {new Date(w.requestedAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}
+                        </p>
+                      </div>
+                      <p className="font-heading font-bold text-gray-900 flex-shrink-0">{formatPrice(w.amountCents / 100)}</p>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-3">
+                      Transferí el monto manualmente al CVU/CBU y marcá como pagado, o rechazá para devolver el saldo a la wallet.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        disabled={isResolving}
+                        onClick={() => handleResolveWithdrawal(w.id, 'REJECTED')}
+                        className="flex items-center justify-center gap-1 border border-red-300 text-red-600 bg-white text-xs font-medium py-2.5 rounded-xl disabled:opacity-50"
+                      >
+                        <XCircle size={14} />
+                        Rechazar
+                      </button>
+                      <button
+                        disabled={isResolving}
+                        onClick={() => handleResolveWithdrawal(w.id, 'PAID')}
+                        className="flex items-center justify-center gap-1 bg-green-600 text-white text-xs font-medium py-2.5 rounded-xl disabled:opacity-50"
+                      >
+                        {isResolving ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Banknote size={14} />}
+                        Marcar pagado
+                      </button>
+                    </div>
                   </div>
                 )
               })

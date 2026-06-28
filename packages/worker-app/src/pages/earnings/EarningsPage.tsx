@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, TrendingUp, DollarSign, Calendar, ChevronRight } from 'lucide-react'
+import { ArrowLeft, TrendingUp, DollarSign, Calendar, ChevronRight, Wallet } from 'lucide-react'
 import { earningsService } from '@/services/requests.service'
+import { api } from '@/lib/api'
 import { formatPrice } from '@/lib/utils'
+
+interface WalletInfo {
+  balanceCents: number
+  balanceARS: number
+  bankCvu: string | null
+  bankAccountVerified: boolean
+}
 
 interface EarningItem {
   id: string
@@ -38,13 +46,56 @@ export function EarningsPage() {
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState<'week' | 'month' | 'all'>('month')
 
+  const [wallet, setWallet] = useState<WalletInfo | null>(null)
+  const [bankCvuInput, setBankCvuInput] = useState('')
+  const [savingBank, setSavingBank] = useState(false)
+  const [withdrawAmount, setWithdrawAmount] = useState('')
+  const [withdrawing, setWithdrawing] = useState(false)
+  const [withdrawMsg, setWithdrawMsg] = useState('')
+
+  const loadWallet = () => {
+    api.get('/workers/me/wallet').then((r) => setWallet(r.data.data)).catch(() => {})
+  }
+
   useEffect(() => {
     earningsService
       .getHistory()
       .then(setEarnings)
       .catch(console.error)
       .finally(() => setLoading(false))
+    loadWallet()
   }, [])
+
+  const handleSaveBank = async () => {
+    if (bankCvuInput.trim().length < 20) return
+    setSavingBank(true)
+    try {
+      await api.patch('/workers/me/bank', { bankCvu: bankCvuInput.trim() })
+      setBankCvuInput('')
+      loadWallet()
+    } catch {
+      alert('No pudimos guardar el CVU/CBU.')
+    } finally {
+      setSavingBank(false)
+    }
+  }
+
+  const handleWithdraw = async () => {
+    const amountARS = parseFloat(withdrawAmount)
+    if (!amountARS || amountARS <= 0) return
+    setWithdrawing(true)
+    setWithdrawMsg('')
+    try {
+      const r = await api.post('/workers/me/wallet/withdraw', { amountARS })
+      setWithdrawMsg(r.data.data.message)
+      setWithdrawAmount('')
+      loadWallet()
+    } catch (err: any) {
+      setWithdrawMsg(err?.response?.data?.error ?? 'No pudimos procesar el retiro.')
+    } finally {
+      setWithdrawing(false)
+    }
+  }
 
   const now = new Date()
   const filtered = earnings.filter((e) => {
@@ -126,6 +177,65 @@ export function EarningsPage() {
           </div>
         </div>
       </div>
+
+      {/* Wallet & withdrawal */}
+      {wallet && (
+        <div className="px-4 mt-4">
+          <div className="bg-white rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-1">
+              <Wallet size={16} className="text-primary" />
+              <span className="text-sm font-semibold text-gray-800">Wallet</span>
+            </div>
+            <p className="text-2xl font-heading font-bold text-gray-900">{formatPrice(wallet.balanceARS)}</p>
+            <p className="text-xs text-gray-400 mb-3">Saldo disponible para retirar</p>
+
+            {!wallet.bankCvu || !wallet.bankAccountVerified ? (
+              <div className="space-y-2">
+                {wallet.bankCvu && !wallet.bankAccountVerified && (
+                  <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
+                    Tu CVU/CBU está pendiente de verificación por un admin.
+                  </p>
+                )}
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="Ingresá tu CVU/CBU (20-22 dígitos)"
+                  value={bankCvuInput}
+                  onChange={(e) => setBankCvuInput(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                />
+                <button
+                  onClick={handleSaveBank}
+                  disabled={savingBank || bankCvuInput.trim().length < 20}
+                  className="btn-primary w-full text-sm"
+                >
+                  {savingBank ? 'Guardando…' : 'Guardar CVU/CBU'}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    placeholder="Monto a retirar (ARS)"
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                  />
+                  <button
+                    onClick={handleWithdraw}
+                    disabled={withdrawing || !withdrawAmount}
+                    className="btn-primary text-sm px-4"
+                  >
+                    {withdrawing ? '...' : 'Retirar'}
+                  </button>
+                </div>
+                {withdrawMsg && <p className="text-xs text-gray-500">{withdrawMsg}</p>}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Earnings list */}
       <div className="px-4 mt-4 pb-8 space-y-6">

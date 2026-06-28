@@ -252,6 +252,27 @@ router.get('/mp/callback', async (req, res) => {
   }
 })
 
+// PATCH /api/workers/me/bank  Body: { bankCvu }
+// Submits/updates the worker's CVU/CBU. Requires admin re-verification before
+// withdrawals can be requested again.
+router.patch('/me/bank', authenticate, requireRole('WORKER'), async (req: AuthRequest, res) => {
+  const schema = z.object({ bankCvu: z.string().min(20).max(22) })
+  const result = schema.safeParse(req.body)
+  if (!result.success) return sendError(res, 'CVU/CBU inválido (debe tener 20-22 dígitos)', 422)
+
+  try {
+    const { prisma } = await import('../config/prisma.js')
+    const worker = await prisma.workerProfile.update({
+      where: { userId: req.user!.userId },
+      data: { bankCvu: result.data.bankCvu, bankAccountVerified: false },
+      select: { bankCvu: true, bankAccountVerified: true },
+    })
+    return sendSuccess(res, worker, 200, 'CVU/CBU guardado. Un admin lo verificará antes de habilitar retiros.')
+  } catch (err) {
+    return sendError(res, err instanceof Error ? err.message : 'Error', 400)
+  }
+})
+
 // ─── WALLET & WITHDRAWAL ──────────────────────────────────────────────────────
 
 // GET /api/workers/me/wallet
@@ -288,9 +309,8 @@ router.post('/me/wallet/withdraw', authenticate, requireRole('WORKER'), async (r
     if (!worker) return sendError(res, 'Perfil no encontrado', 404)
 
     const amountCents = Math.round(result.data.amountARS * 100)
-    await deductWalletForWithdrawal(worker.id, amountCents)
-    // TODO: trigger actual bank transfer via MP / Bind API
-    return sendSuccess(res, { message: 'Retiro solicitado. Se acreditará en 1-2 días hábiles.' })
+    const withdrawal = await deductWalletForWithdrawal(worker.id, amountCents)
+    return sendSuccess(res, { withdrawal, message: 'Retiro solicitado. Se acreditará en 1-2 días hábiles.' })
   } catch (err) {
     return sendError(res, err instanceof Error ? err.message : 'Error al solicitar retiro', 400)
   }

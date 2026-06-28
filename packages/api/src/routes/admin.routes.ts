@@ -4,7 +4,7 @@ import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.
 import { sendSuccess, sendError } from '../utils/response.js'
 import { prisma } from '../config/prisma.js'
 import * as kycService from '../services/kyc.service.js'
-import { resolveDisputeForClient, resolveDisputeForWorker } from '../services/escrow.service.js'
+import { resolveDisputeForClient, resolveDisputeForWorker, resolveWithdrawal } from '../services/escrow.service.js'
 
 const router = Router()
 
@@ -112,6 +112,7 @@ router.get('/kyc/pending', async (_req, res) => {
         OR: [
           { kycStatus: 'SUBMITTED' },
           { insurancePolicyUrl: { not: null }, insuranceVerified: false },
+          { bankCvu: { not: null }, bankAccountVerified: false },
         ],
       },
       include: {
@@ -122,6 +123,19 @@ router.get('/kyc/pending', async (_req, res) => {
     return sendSuccess(res, workers)
   } catch (err) {
     return sendError(res, err instanceof Error ? err.message : 'Error', 500)
+  }
+})
+
+// PATCH /api/admin/workers/:workerId/verify-bank
+router.patch('/workers/:workerId/verify-bank', async (req, res) => {
+  try {
+    await prisma.workerProfile.update({
+      where: { id: req.params.workerId },
+      data: { bankAccountVerified: true },
+    })
+    return sendSuccess(res, {}, 200, 'Cuenta bancaria verificada')
+  } catch (err) {
+    return sendError(res, err instanceof Error ? err.message : 'Error', 400)
   }
 })
 
@@ -285,6 +299,40 @@ router.get('/users', async (req: AuthRequest, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Error'
     return sendError(res, message, 500)
+  }
+})
+
+// ─── WITHDRAWALS ─────────────────────────────────────────────────────────────
+
+// GET /api/admin/withdrawals?status=PENDING
+router.get('/withdrawals', async (req: AuthRequest, res) => {
+  const status = req.query.status as 'PENDING' | 'PAID' | 'REJECTED' | undefined
+  try {
+    const withdrawals = await prisma.withdrawalRequest.findMany({
+      where: status ? { status } : {},
+      include: { worker: { include: { user: { select: { firstName: true, lastName: true, email: true } } } } },
+      orderBy: { requestedAt: 'desc' },
+    })
+    return sendSuccess(res, withdrawals)
+  } catch (err) {
+    return sendError(res, err instanceof Error ? err.message : 'Error', 500)
+  }
+})
+
+// PATCH /api/admin/withdrawals/:id  Body: { status: 'PAID'|'REJECTED', adminNote? }
+router.patch('/withdrawals/:id', async (req, res) => {
+  const schema = z.object({
+    status: z.enum(['PAID', 'REJECTED']),
+    adminNote: z.string().max(300).optional(),
+  })
+  const result = schema.safeParse(req.body)
+  if (!result.success) return sendError(res, 'Datos inválidos', 422)
+
+  try {
+    await resolveWithdrawal(req.params.id, result.data.status, result.data.adminNote)
+    return sendSuccess(res, {}, 200, result.data.status === 'PAID' ? 'Retiro marcado como pagado' : 'Retiro rechazado')
+  } catch (err) {
+    return sendError(res, err instanceof Error ? err.message : 'Error', 400)
   }
 })
 

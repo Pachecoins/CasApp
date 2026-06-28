@@ -111,6 +111,16 @@ enum CourseEnrollmentStatus {
   CANCELLED
 }
 
+// Manual payout queue: wallet funds are deducted immediately on request,
+// then an admin transfers the money to bankCvu out-of-band and marks it PAID
+// (or REJECTED, which refunds the wallet). This is the realistic path until
+// an automated payout/transfer API (MP/Bind) is integrated.
+enum WithdrawalStatus {
+  PENDING
+  PAID
+  REJECTED
+}
+
 // Qualitative review tags ("Puntual", "Honesto", "Prolijo", ...)
 enum ReviewTag {
   PUNCTUAL     // Puntual
@@ -228,9 +238,28 @@ model WorkerProfile {
   serviceRequests ServiceRequest[]
   subscriptions  Subscription[]
   courseEnrollments CourseEnrollment[]
+  withdrawalRequests WithdrawalRequest[]
 
   @@index([isAvailable, currentLatitude, currentLongitude])
   @@map("worker_profiles")
+}
+
+// A worker's request to cash out their wallet balance to their bank account.
+model WithdrawalRequest {
+  id          String           @id @default(cuid())
+  workerId    String
+  amountCents Int
+  bankCvu     String           // snapshot of the CVU/CBU at request time
+  status      WithdrawalStatus @default(PENDING)
+  adminNote   String?
+  requestedAt DateTime         @default(now())
+  processedAt DateTime?
+
+  worker WorkerProfile @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@index([workerId])
+  @@index([status])
+  @@map("withdrawal_requests")
 }
 
 // Equipment items uploaded by the worker to justify their tier / pricing

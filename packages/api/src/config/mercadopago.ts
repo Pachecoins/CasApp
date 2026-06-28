@@ -1,4 +1,4 @@
-import { MercadoPagoConfig, Preference, Payment } from 'mercadopago'
+import { MercadoPagoConfig, Preference, Payment, PaymentRefund } from 'mercadopago'
 import { env } from './env.js'
 
 const accessToken = env.MP_ACCESS_TOKEN || 'TEST-placeholder'
@@ -10,5 +10,6 @@ export const mpClient = new MercadoPagoConfig({
 
 export const mpPreferenceClient = new Preference(mpClient)
 export const mpPaymentClient = new Payment(mpClient)
+export const mpRefundClient = new PaymentRefund(mpClient)
 
 export const isMPConfigured = Boolean(env.MP_ACCESS_TOKEN)

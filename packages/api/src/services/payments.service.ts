@@ -1,6 +1,6 @@
 import { prisma } from '../config/prisma.js'
 import { type TransactionStatus } from '@prisma/client'
-import { mpPreferenceClient, mpPaymentClient, isMPConfigured } from '../config/mercadopago.js'
+import { mpPreferenceClient, mpPaymentClient, mpRefundClient, isMPConfigured } from '../config/mercadopago.js'
 import { env } from '../config/env.js'
 import { startMatchingAfterPayment } from './requests.service.js'
 import { capturePayment } from './escrow.service.js'
@@ -204,6 +204,19 @@ export async function captureViaMP(mpPaymentId: string): Promise<void> {
   if (!isMPConfigured || !mpPaymentId || mpPaymentId.startsWith('mock')) return
   // MP capture call would go here for deferred-capture payments.
   // For standard auto-capture preferences (current setup), no action needed.
+}
+
+// ─── Refund via MP API ─────────────────────────────────────────────────────────
+/**
+ * Issues a full refund for an approved payment. Called when a dispute is
+ * resolved in the client's favor. No-op in dev (mock payments aren't real MP
+ * charges, so there's nothing to refund against the gateway).
+ */
+export async function refundPayment(mpPaymentId: string | null): Promise<void> {
+  if (!mpPaymentId || mpPaymentId.startsWith('mock')) return
+  if (!isMPConfigured) return
+
+  await mpRefundClient.create({ payment_id: Number(mpPaymentId) })
 }
 
 // ─── MP OAuth for Workers ─────────────────────────────────────────────────────
