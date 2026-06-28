@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BarChart2, Calendar, Star, Power, MapPin, Bell, RefreshCw } from 'lucide-react'
+import { BarChart2, Calendar, Star, Power, MapPin, Bell, RefreshCw, Wrench } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { Button } from '@/components/ui/Button'
 import { workerRequestsService } from '@/services/requests.service'
@@ -376,6 +376,13 @@ export function DashboardPage() {
           >
             <BarChart2 size={20} />
             <span className="text-xs">Ganancias</span>
+          </button>
+          <button
+            onClick={() => navigate('/equipos')}
+            className="flex flex-col items-center gap-1 text-gray-400"
+          >
+            <Wrench size={20} />
+            <span className="text-xs">Equipos</span>
           </button>
           <button
             onClick={() => navigate('/profile')}

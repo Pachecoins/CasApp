@@ -89,6 +89,14 @@ enum TransactionStatus {
   REFUNDED
 }
 
+enum EquipmentRentalStatus {
+  PENDING   // requested by client, awaiting owner confirmation
+  CONFIRMED // owner confirmed, awaiting start date
+  ACTIVE    // currently rented out
+  COMPLETED
+  CANCELLED
+}
+
 // Qualitative review tags ("Puntual", "Honesto", "Prolijo", ...)
 enum ReviewTag {
   PUNCTUAL     // Puntual
@@ -119,6 +127,7 @@ model User {
   reviewsReceived   Review[]           @relation("RevieweeRelation")
   chatMessages      ChatMessage[]
   pushSubscriptions PushSubscription[]
+  equipmentRentals  EquipmentRental[]
 
   @@index([email])
   @@map("users")
@@ -219,10 +228,38 @@ model WorkerEquipment {
   verifiedAt  DateTime?
   createdAt   DateTime  @default(now())
 
-  worker WorkerProfile @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  // Equipment rental marketplace — worker offers their own machine for rent
+  isForRent        Boolean @default(false)
+  pricePerDayCents  Int?
+
+  worker  WorkerProfile     @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  rentals EquipmentRental[]
 
   @@index([workerId])
+  @@index([isForRent])
   @@map("worker_equipment")
+}
+
+// A client booking a worker's machine for a date range
+model EquipmentRental {
+  id              String                @id @default(cuid())
+  equipmentId     String
+  renterId        String
+  startDate       DateTime
+  endDate         DateTime
+  totalDays       Int
+  totalPriceCents Int
+  status          EquipmentRentalStatus @default(PENDING)
+  paymentStatus   PaymentStatus         @default(PENDING)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  equipment WorkerEquipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  renter    User            @relation(fields: [renterId], references: [id], onDelete: Cascade)
+
+  @@index([equipmentId])
+  @@index([renterId])
+  @@map("equipment_rentals")
 }
 
 // ─── SERVICES ────────────────────────────────────────────────────────────────
