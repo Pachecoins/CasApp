@@ -37,6 +37,17 @@ export default function App() {
   return (
     <BrowserRouter>
       <AppInner />
+      <div className="min-h-screen bg-gray-200 flex justify-center">
+        <div className="w-full max-w-md min-h-screen bg-background shadow-2xl">
+          <AppRoutes />
+        </div>
+      </div>
+    </BrowserRouter>
+  )
+}
+
+function AppRoutes() {
+  return (
       <Routes>
         <Route path="/" element={<SplashPage />} />
 
@@ -63,6 +74,5 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
   )
 }
