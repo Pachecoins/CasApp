@@ -1,13 +1,13 @@
 {
-  "name": "casapp",
+  "name": "tuki",
   "version": "1.0.0",
   "private": true,
-  "description": "CasApp - Plataforma de servicios del hogar on-demand",
+  "description": "Tuki - Plataforma de servicios del hogar on-demand",
   "scripts": {
     "dev": "pnpm --parallel --filter './packages/*' dev",
-    "dev:api": "pnpm --filter @casapp/api dev",
-    "dev:client": "pnpm --filter @casapp/client-app dev",
-    "dev:worker": "pnpm --filter @casapp/worker-app dev",
+    "dev:api": "pnpm --filter @tuki/api dev",
+    "dev:client": "pnpm --filter @tuki/client-app dev",
+    "dev:worker": "pnpm --filter @tuki/worker-app dev",
     "build": "pnpm --recursive build",
     "db:generate": "prisma generate --schema=prisma/schema.prisma",
     "db:migrate": "prisma migrate dev --schema=prisma/schema.prisma",

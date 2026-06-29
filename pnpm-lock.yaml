@@ -33,12 +33,12 @@ importers:
 
   packages/api:
     dependencies:
-      '@casapp/shared':
-        specifier: workspace:*
-        version: link:../shared
       '@prisma/client':
         specifier: ^5.10.0
         version: 5.22.0(prisma@5.22.0)
+      '@tuki/shared':
+        specifier: workspace:*
+        version: link:../shared
       bcrypt:
         specifier: ^5.1.1
         version: 5.1.1
@@ -130,12 +130,12 @@ importers:
 
   packages/client-app:
     dependencies:
-      '@casapp/shared':
-        specifier: workspace:*
-        version: link:../shared
       '@hookform/resolvers':
         specifier: ^3.3.4
         version: 3.10.0(react-hook-form@7.71.2)
+      '@tuki/shared':
+        specifier: workspace:*
+        version: link:../shared
       axios:
         specifier: ^1.6.7
         version: 1.13.6
@@ -218,12 +218,12 @@ importers:
 
   packages/worker-app:
     dependencies:
-      '@casapp/shared':
-        specifier: workspace:*
-        version: link:../shared
       '@hookform/resolvers':
         specifier: ^3.3.4
         version: 3.10.0(react-hook-form@7.71.2)
+      '@tuki/shared':
+        specifier: workspace:*
+        version: link:../shared
       axios:
         specifier: ^1.6.7
         version: 1.13.6

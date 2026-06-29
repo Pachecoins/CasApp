@@ -1,6 +1,6 @@
 import { prisma } from '../config/prisma.js'
 import { type Prisma } from '@prisma/client'
-import { calculateQuote } from '@casapp/shared/utils/price.js'
+import { calculateQuote } from '@tuki/shared/utils/price.js'
 import { io } from '../index.js'
 import {
   notifyRequestMatched,
@@ -59,7 +59,7 @@ export async function createRequest(params: CreateRequestParams) {
       basePricePremium: category.basePricePremium,
       pricePerM2Standard: category.pricePerM2Standard,
       pricePerM2Premium: category.pricePerM2Premium,
-      addonDefinitions: category.addonDefinitions as import('@casapp/shared').AddonDefinition[],
+      addonDefinitions: category.addonDefinitions as import('@tuki/shared').AddonDefinition[],
     },
     {
       lotSize,

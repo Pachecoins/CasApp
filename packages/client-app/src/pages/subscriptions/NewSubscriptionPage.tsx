@@ -7,7 +7,7 @@ import { ArrowLeft, MapPin, RefreshCw, Calendar, Clock, CheckCircle } from 'luci
 import { Button } from '@/components/ui/Button'
 import { categoriesService, subscriptionsService } from '@/services/requests.service'
 import { formatPrice } from '@/lib/utils'
-import type { ServiceCategory } from '@casapp/shared'
+import type { ServiceCategory } from '@tuki/shared'
 
 const DAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 

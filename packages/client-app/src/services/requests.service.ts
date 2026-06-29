@@ -1,5 +1,5 @@
 import { api } from '@/lib/api'
-import type { LotSize, EquipmentTier, ServiceCategory } from '@casapp/shared'
+import type { LotSize, EquipmentTier, ServiceCategory } from '@tuki/shared'
 
 export interface CreateRequestPayload {
   categoryId: string

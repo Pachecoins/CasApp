@@ -1,5 +1,5 @@
 import { prisma } from '../config/prisma.js'
-import type { SubscriptionFrequency } from '@casapp/shared'
+import type { SubscriptionFrequency } from '@tuki/shared'
 import { notifyNearbyWorkersExport } from './requests.service.js'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

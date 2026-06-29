@@ -1,5 +1,5 @@
 import { prisma } from '../config/prisma.js'
-import { calculateDistance } from '@casapp/shared'
+import { calculateDistance } from '@tuki/shared'
 
 interface BrowseParams {
   lat?: number

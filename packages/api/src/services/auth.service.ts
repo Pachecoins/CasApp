@@ -6,7 +6,7 @@ import type {
   RegisterWorkerPayload,
   LoginPayload,
   AuthResponse,
-} from '@casapp/shared'
+} from '@tuki/shared'
 
 const SALT_ROUNDS = 12
 

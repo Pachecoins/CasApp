@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useAuthStore } from '@/store/auth.store'
 import { api } from '@/lib/api'
-import type { ServiceCategory } from '@casapp/shared'
+import type { ServiceCategory } from '@tuki/shared'
 
 const registerSchema = z
   .object({

@@ -1,5 +1,5 @@
 import { prisma } from '../config/prisma.js'
-import { calculateDistance, estimateArrivalMinutes } from '@casapp/shared'
+import { calculateDistance, estimateArrivalMinutes } from '@tuki/shared'
 
 interface NearbyWorkersParams {
   lat: number

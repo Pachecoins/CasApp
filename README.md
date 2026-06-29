@@ -1,4 +1,4 @@
-# CasApp — Plataforma de servicios del hogar
+# Tuki — Plataforma de servicios del hogar
 
 > Conectá con los mejores profesionales del hogar. Jardinería, plomería, electricidad y más.
 
@@ -20,7 +20,7 @@
 casapp/
 ├── packages/
 │   ├── client-app/     → App React para clientes (puerto 5173)
-│   ├── worker-app/     → App React para trabajadores CasApp Pro (puerto 5174)
+│   ├── worker-app/     → App React para trabajadores Tuki Pro (puerto 5174)
 │   ├── api/            → Backend Express (puerto 3000)
 │   └── shared/         → Tipos TypeScript y utils compartidos
 ├── prisma/
@@ -69,7 +69,7 @@ pnpm dev
 Esto levanta en paralelo:
 - **API** → http://localhost:3000
 - **Cliente App** → http://localhost:5173
-- **Worker App (CasApp Pro)** → http://localhost:5174
+- **Worker App (Tuki Pro)** → http://localhost:5174
 
 ## Endpoints de la API
 

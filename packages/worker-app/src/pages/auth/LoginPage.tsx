@@ -122,7 +122,7 @@ export function LoginPage() {
             href={import.meta.env.VITE_CLIENT_APP_URL || 'http://localhost:5173'}
             className="text-secondary font-semibold"
           >
-            Usá CasApp Cliente →
+            Usá Tuki Cliente →
           </a>
         </p>
       </div>

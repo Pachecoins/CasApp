@@ -1,7 +1,7 @@
 {
-  "name": "@casapp/client-app",
+  "name": "@tuki/client-app",
   "version": "1.0.0",
-  "description": "CasApp - App para clientes",
+  "description": "Tuki - App para clientes",
   "type": "module",
   "scripts": {
     "dev": "vite --port 5173",
@@ -11,7 +11,7 @@
     "lint": "eslint src --ext .ts,.tsx"
   },
   "dependencies": {
-    "@casapp/shared": "workspace:*",
+    "@tuki/shared": "workspace:*",
     "@hookform/resolvers": "^3.3.4",
     "axios": "^1.6.7",
     "class-variance-authority": "^0.7.0",

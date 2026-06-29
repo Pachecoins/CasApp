@@ -1,7 +1,7 @@
 {
-  "name": "@casapp/worker-app",
+  "name": "@tuki/worker-app",
   "version": "1.0.0",
-  "description": "CasApp Pro — App para trabajadores",
+  "description": "Tuki Pro — App para trabajadores",
   "type": "module",
   "scripts": {
     "dev": "vite --port 5174",
@@ -11,7 +11,7 @@
     "lint": "eslint src --ext .ts,.tsx"
   },
   "dependencies": {
-    "@casapp/shared": "workspace:*",
+    "@tuki/shared": "workspace:*",
     "@hookform/resolvers": "^3.3.4",
     "axios": "^1.6.7",
     "class-variance-authority": "^0.7.0",

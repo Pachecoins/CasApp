@@ -8,8 +8,8 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { categoriesService, requestsService } from '@/services/requests.service'
 import { formatPrice } from '@/lib/utils'
-import { calculateQuote } from '@casapp/shared'
-import type { EquipmentTier, LotSize, ServiceCategory, SubscriptionFrequency } from '@casapp/shared'
+import { calculateQuote } from '@tuki/shared'
+import type { EquipmentTier, LotSize, ServiceCategory, SubscriptionFrequency } from '@tuki/shared'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 

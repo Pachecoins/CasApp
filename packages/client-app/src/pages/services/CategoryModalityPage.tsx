@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Zap, Calendar, RefreshCw, ChevronRight } from 'lucide-react'
 import { categoriesService } from '@/services/requests.service'
 import { formatPrice } from '@/lib/utils'
-import type { ServiceCategory } from '@casapp/shared'
+import type { ServiceCategory } from '@tuki/shared'
 
 const CATEGORY_META: Record<string, { icon: string; color: string; bgColor: string }> = {
   jardineria:       { icon: '🌿', color: 'text-green-700',  bgColor: 'bg-green-50' },

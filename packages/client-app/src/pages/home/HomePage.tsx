@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Bell, ChevronDown, Clock, MapPin, Repeat } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { categoriesService, requestsService, subscriptionsService } from '@/services/requests.service'
-import type { ServiceCategory } from '@casapp/shared'
+import type { ServiceCategory } from '@tuki/shared'
 
 // ─── Per-slug visual overrides (UI only) ─────────────────────────────────────
 const CATEGORY_VISUALS: Record<string, { icon: string; color: string }> = {
